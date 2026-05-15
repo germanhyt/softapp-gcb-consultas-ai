@@ -1,0 +1,15 @@
+services:
+  consultas-refugio-v2:
+    build: .
+    container_name: consultas-refugio-v2
+    restart: unless-stopped
+    ports:
+      - "8083:3000"
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

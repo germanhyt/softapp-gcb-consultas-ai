@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+/* ── Refugio Design System ─────────────────────────────────────────────────── */
+:root {
+  /* Brand Colors */
+  --primary:            #38D149;
+  --primary-dark:       #2BB33D;
+  --primary-foreground: #0E1A0F;
+
+  --secondary:            #FF9F43;
+  --secondary-foreground: #1A0E00;
+
+  --tertiary:            #D65454;
+  --tertiary-foreground: #FFFFFF;
+
+  --neutral:            #717A6D;
+  --neutral-foreground: #E8EDE8;
+
+  /* Surface & Background (Dark Mode as Default) */
+  --background:  #101410;
+  --surface:     #181C18;
+  --surface-2:   #1F241F;
+  --surface-3:   #262B26;
+
+  /* Text */
+  --foreground:          #E8EDE8;
+  --foreground-muted:    #9DA89D;
+  --foreground-subtle:   #6B756B;
+
+  /* Borders */
+  --border:       #2A302A;
+  --border-strong: #3A433A;
+
+  /* Semantic aliases (shadcn compat) */
+  --card:            var(--surface);
+  --card-foreground: var(--foreground);
+  --popover:         var(--surface-2);
+  --popover-foreground: var(--foreground);
+  --muted:           var(--surface-2);
+  --muted-foreground: var(--foreground-muted);
+  --accent:          var(--surface-3);
+  --accent-foreground: var(--foreground);
+  --destructive:     var(--tertiary);
+  --destructive-foreground: var(--tertiary-foreground);
+  --input:           var(--surface-2);
+  --ring:            var(--primary);
+  --radius:          0.625rem;
+}
+
+/* ── Base Styles ───────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-hanken, 'Hanken Grotesk'), system-ui, -apple-system, sans-serif;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar Styling ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--neutral); }
+
+/* ── Selection ─────────────────────────────────────────────────────────────── */
+::selection { background: rgba(56, 209, 73, 0.25); color: var(--foreground); }
+
+/* ── Focus Ring ────────────────────────────────────────────────────────────── */
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius); }
+
+/* ── Nav Link ──────────────────────────────────────────────────────────────── */
+.nav-link {
+  color: var(--foreground-muted);
+  transition: color 0.15s, background 0.15s;
+}
+.nav-link:hover {
+  color: var(--primary);
+  background: rgba(56, 209, 73, 0.08);
+}
+
+/* ── Tailwind v4 inline theme ─────────────────────────────────────────────── */
+@theme inline {
+  --color-primary:             var(--primary);
+  --color-primary-foreground:  var(--primary-foreground);
+  --color-secondary:           var(--secondary);
+  --color-tertiary:            var(--tertiary);
+  --color-neutral:             var(--neutral);
+  --color-background:          var(--background);
+  --color-surface:             var(--surface);
+  --color-surface-2:           var(--surface-2);
+  --color-surface-3:           var(--surface-3);
+  --color-foreground:          var(--foreground);
+  --color-foreground-muted:    var(--foreground-muted);
+  --color-card:                var(--card);
+  --color-border:              var(--border);
+  --color-border-strong:       var(--border-strong);
+  --color-input:               var(--input);
+  --color-ring:                var(--ring);
+  --color-muted:               var(--muted);
+  --color-muted-foreground:    var(--muted-foreground);
+  --color-accent:              var(--accent);
+  --color-destructive:         var(--destructive);
+  --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 8px);
+}

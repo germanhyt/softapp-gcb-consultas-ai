@@ -1,0 +1,52 @@
+{
+  "name": "consultas-refugio-v2",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.0",
+    "@ai-sdk/google": "^1.2.0",
+    "@ai-sdk/openai": "^1.2.0",
+    "@ai-sdk/react": "latest",
+    "@google-cloud/bigquery": "^8.1.1",
+    "@types/react-plotly.js": "^2.6.4",
+    "ai": "^6.0.182",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.468.0",
+    "next": "^16.2.6",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.3",
+    "plotly.js": "^3.4.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-plotly.js": "^2.6.0",
+    "recharts": "^2.15.0",
+    "tailwind-merge": "^3.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.0.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^7.0.11",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.3.0",
+    "postcss": "^8.5.10",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0"
+  },
+  "resolutions": {
+    "postcss": ">=8.5.10"
+  }
+}
