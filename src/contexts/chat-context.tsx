@@ -7,8 +7,12 @@ import React, {
   useCallback,
   useEffect,
   useRef,
+  useMemo,
 } from "react";
-import { useChat, type Message } from "@ai-sdk/react";
+import { useChat, type UIMessage } from "@ai-sdk/react";
+import { DefaultChatTransport, generateId } from "ai";
+import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import { textFromUIMessageParts } from "@/lib/ai/ui-message-text";
 
 export interface ChatMessage {
   id: string;
@@ -43,12 +47,31 @@ const STORAGE_KEY = "refugio_chat_messages";
 const MODEL_KEY = "refugio_chat_model";
 const MAX_MESSAGES = 50;
 
-function loadStoredMessages(): Message[] {
+type LegacyStoredMessage = {
+  id?: string;
+  role: string;
+  content: unknown;
+};
+
+function loadStoredMessages(): UIMessage[] {
   if (typeof window === "undefined") return [];
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored) as Message[];
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as unknown[];
+    if (!Array.isArray(parsed) || parsed.length === 0) return [];
+
+    const first = parsed[0] as Record<string, unknown>;
+    if ("parts" in first && Array.isArray(first.parts)) {
+      return parsed as UIMessage[];
+    }
+
+    if ("content" in first) {
+      return (parsed as LegacyStoredMessage[]).map((m) => ({
+        id: m.id ?? generateId(),
+        role: m.role as UIMessage["role"],
+        parts: [{ type: "text" as const, text: String(m.content ?? "") }],
+      }));
     }
   } catch {
     // ignore
@@ -56,10 +79,10 @@ function loadStoredMessages(): Message[] {
   return [];
 }
 
-function saveMessages(messages: Message[]) {
+function saveMessages(messages: UIMessage[]) {
   if (typeof window === "undefined") return;
   try {
-    const toSave = messages.slice(-MAX_MESSAGES);
+    const toSave = /* UIMessage[] */ messages.slice(-MAX_MESSAGES);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
     // ignore
@@ -67,37 +90,64 @@ function saveMessages(messages: Message[]) {
 }
 
 function loadModel(): string {
-  if (typeof window === "undefined") return "gemini-2.0-flash";
-  return localStorage.getItem(MODEL_KEY) || "gemini-2.0-flash";
+  if (typeof window === "undefined") return DEFAULT_MODEL_ID;
+  return localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL_ID;
 }
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedModel, setSelectedModelState] = useState("gemini-2.0-flash");
+  const [selectedModel, setSelectedModelState] = useState(DEFAULT_MODEL_ID);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Vercel AI SDK useChat hook
+  const selectedModelRef = useRef(selectedModel);
+  selectedModelRef.current = selectedModel;
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/ai/chat",
+        prepareSendMessagesRequest: ({
+          messages: msgs,
+          body,
+          headers,
+          credentials,
+          api,
+        }) => ({
+          body: {
+            ...(body && typeof body === "object" ? body : {}),
+            messages: msgs,
+            modelId: selectedModelRef.current,
+          },
+          headers,
+          credentials,
+          api,
+        }),
+      }),
+    [],
+  );
+
   const {
     messages: aiMessages,
-    isLoading,
-    append,
+    sendMessage: sendChatMessage,
     setMessages: setAiMessages,
     stop,
-    reload,
+    regenerate,
+    status,
+    error,
+    clearError,
   } = useChat({
-    api: "/api/ai/chat",
-    body: { modelId: selectedModel },
+    transport,
     onError: (err) => {
-      setErrorMsg(err.message || "Error al procesar la consulta");
+      console.error("[Chat]", err);
     },
     onFinish: () => {
-      setErrorMsg(null);
+      clearError();
     },
   });
 
-  // Load stored messages and model on mount
+  const isLoading = status === "submitted" || status === "streaming";
+
   useEffect(() => {
     const stored = loadStoredMessages();
     if (stored.length > 0) {
@@ -107,14 +157,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setIsInitialized(true);
   }, [setAiMessages]);
 
-  // Save messages when they change
   useEffect(() => {
     if (isInitialized && aiMessages.length > 0) {
       saveMessages(aiMessages);
     }
   }, [aiMessages, isInitialized]);
 
-  // Keyboard shortcut: Ctrl+K
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
@@ -129,13 +177,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
-  // Convert AI SDK messages to our ChatMessage format
   const messages: ChatMessage[] = aiMessages.map((m) => ({
     id: m.id,
     role: m.role as "user" | "assistant",
-    content: m.content,
+    content: textFromUIMessageParts(m.parts),
     timestamp: new Date().toISOString(),
-    isStreaming: isLoading && m.role === "assistant" && m === aiMessages[aiMessages.length - 1],
+    isStreaming:
+      isLoading &&
+      m.role === "assistant" &&
+      m === aiMessages[aiMessages.length - 1],
     model: selectedModel,
   }));
 
@@ -145,24 +195,24 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const sendMessage = useCallback(
     (content: string) => {
       if (!content.trim() || isLoading) return;
-      setErrorMsg(null);
-      append({ role: "user", content: content.trim() });
+      clearError();
+      void sendChatMessage({ text: content.trim() });
     },
-    [append, isLoading]
+    [sendChatMessage, isLoading, clearError],
   );
 
   const clearMessages = useCallback(() => {
     stop();
     setAiMessages([]);
-    setErrorMsg(null);
+    clearError();
     if (typeof window !== "undefined") {
       localStorage.removeItem(STORAGE_KEY);
     }
-  }, [stop, setAiMessages]);
+  }, [stop, setAiMessages, clearError]);
 
   const regenerateLastResponse = useCallback(() => {
-    reload();
-  }, [reload]);
+    void regenerate();
+  }, [regenerate]);
 
   const setSelectedModel = useCallback((model: string) => {
     setSelectedModelState(model);
@@ -175,7 +225,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     stop();
   }, [stop]);
 
-  // Ensure stale abort controller is cleaned up
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     return () => {
@@ -188,7 +237,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       value={{
         messages,
         isLoading,
-        error: errorMsg,
+        error: error?.message ?? null,
         isOpen,
         isExpanded,
         selectedModel,

@@ -1,5 +1,6 @@
 import { generateText } from "ai";
-import { google } from "@ai-sdk/google";
+import { getModel } from "@/lib/ai/providers";
+import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
 
 export const maxDuration = 30;
 
@@ -37,10 +38,10 @@ export async function POST(req: Request) {
 
     // Always use Gemini Flash for speed
     const result = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: getModel(DEFAULT_MODEL_ID),
       system: META_PROMPT,
       prompt: query,
-      maxTokens: 500,
+      maxOutputTokens: 500,
       temperature: 0.4,
     });
 

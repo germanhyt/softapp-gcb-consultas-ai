@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const DIAS = [
   { label: "L", value: 2, title: "Lunes" },
@@ -27,6 +28,9 @@ interface DateFilterProps {
   turnos: string[];
   negocioList: string[];
   onChange: (f: DashboardFilters) => void;
+  /** Ocultar negocios con ventas 0 en el rango (persistido en configuración). */
+  hideNegociosSinVentas?: boolean;
+  onHideNegociosSinVentasChange?: (value: boolean) => void;
 }
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -175,10 +179,19 @@ function NegocioDropdown({
 }
 
 // ── Label component ───────────────────────────────────────────────────────────
-function FilterLabel({ children }: { children: React.ReactNode }) {
+function FilterLabel({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <span
-      className="text-[10px] font-bold uppercase tracking-widest shrink-0"
+      className={cn(
+        "text-[10px] font-bold uppercase tracking-widest shrink-0",
+        className,
+      )}
       style={{ color: "var(--foreground-subtle)" }}
     >
       {children}
@@ -187,7 +200,14 @@ function FilterLabel({ children }: { children: React.ReactNode }) {
 }
 
 // ── Main filter bar ───────────────────────────────────────────────────────────
-export function DateFilter({ filters, turnos, negocioList, onChange }: DateFilterProps) {
+export function DateFilter({
+  filters,
+  turnos,
+  negocioList,
+  onChange,
+  hideNegociosSinVentas,
+  onHideNegociosSinVentasChange,
+}: DateFilterProps) {
   const curYear = new Date().getFullYear();
   const td = todayStr(), yr = yearRange(curYear), yrP = yearRange(curYear - 1), cm = curMonthRange();
 
@@ -362,6 +382,21 @@ export function DateFilter({ filters, turnos, negocioList, onChange }: DateFilte
           onClick={() => upd({ viewMode: "medios_pago" })}
         />
       </div>
+
+      {onHideNegociosSinVentasChange != null && hideNegociosSinVentas != null && (
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hideNegociosSinVentas}
+            onChange={(e) => onHideNegociosSinVentasChange(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border shrink-0 accent-primary"
+            style={{ borderColor: "var(--border-strong)" }}
+          />
+          <span className="text-xs font-semibold" style={{ color: "var(--foreground-muted)" }}>
+            Ocultar negocios sin ventas
+          </span>
+        </label>
+      )}
     </div>
   );
 }

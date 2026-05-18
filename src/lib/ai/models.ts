@@ -39,6 +39,14 @@ export const AI_PROVIDERS: Record<string, AIProviderInfo> = {
     icon: "G",
     maxTokens: 32768,
   },
+  "gemini-3-flash-preview": {
+    id: "gemini-3-flash-preview",
+    name: "Gemini 3 Flash (preview)",
+    provider: "Google",
+    providerKey: "google",
+    icon: "G",
+    maxTokens: 65536,
+  },
   "claude-sonnet-4-6": {
     id: "claude-sonnet-4-6",
     name: "Claude Sonnet 4.6",
@@ -55,9 +63,25 @@ export const AI_PROVIDERS: Record<string, AIProviderInfo> = {
     icon: "O",
     maxTokens: 16384,
   },
+  "deepseek-v4-flash": {
+    id: "deepseek-v4-flash",
+    name: "DeepSeek V4 Flash",
+    provider: "DeepSeek",
+    providerKey: "deepseek",
+    icon: "D",
+    maxTokens: 32768,
+  },
+  "deepseek-v4-pro": {
+    id: "deepseek-v4-pro",
+    name: "DeepSeek V4 Pro",
+    provider: "DeepSeek",
+    providerKey: "deepseek",
+    icon: "D",
+    maxTokens: 32768,
+  },
   "deepseek-chat": {
     id: "deepseek-chat",
-    name: "DeepSeek V3",
+    name: "DeepSeek Chat",
     provider: "DeepSeek",
     providerKey: "deepseek",
     icon: "D",
@@ -65,10 +89,16 @@ export const AI_PROVIDERS: Record<string, AIProviderInfo> = {
   },
   "deepseek-reasoner": {
     id: "deepseek-reasoner",
-    name: "DeepSeek R1",
+    name: "DeepSeek Reasoner",
     provider: "DeepSeek",
     providerKey: "deepseek",
     icon: "D",
     maxTokens: 32768,
   },
 };
+
+/** Modelo por defecto si no hay uno guardado o no llega `modelId` (chat y tareas server). Sobreescribible con `DEFAULT_MODEL_ID` en el servidor. */
+export const DEFAULT_MODEL_ID = "gemini-2.5-flash";
+
+/** Google cuando `getModel` recibe un id desconocido (fallback defensivo). */
+export const FALLBACK_GOOGLE_MODEL_ID = "gemini-2.0-flash";

@@ -16,8 +16,10 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ScheduledReportTasksSettings } from "@/components/settings/scheduled-report-tasks";
 
 interface ProviderDisplay {
   key: ProviderKey;
@@ -36,6 +38,17 @@ const PROVIDERS: ProviderDisplay[] = [
 interface MaskedConfig {
   providers: Record<ProviderKey, { maskedKey: string; hasKey: boolean }>;
   models: Record<string, boolean>;
+}
+
+interface MaskedSmtpState {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  from: string;
+  maskedPass: string;
+  hasPass: boolean;
+  ready: boolean;
 }
 
 export default function SettingsPage() {
@@ -61,7 +74,51 @@ export default function SettingsPage() {
   const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load config on mount
+  const [hideNegociosSinVentas, setHideNegociosSinVentas] = useState(true);
+  const [dashPrefSaving, setDashPrefSaving] = useState(false);
+  const [dashPrefMessage, setDashPrefMessage] = useState<string | null>(null);
+
+  const [smtpMask, setSmtpMask] = useState<MaskedSmtpState | null>(null);
+  const [smtpHost, setSmtpHost] = useState("smtp.gmail.com");
+  const [smtpPort, setSmtpPort] = useState(587);
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpFrom, setSmtpFrom] = useState("");
+  const [smtpPassVisible, setSmtpPassVisible] = useState(false);
+  const [smtpSaving, setSmtpSaving] = useState(false);
+  const [smtpMessage, setSmtpMessage] = useState<string | null>(null);
+
+  // Load dashboard preferences on mount
+  useEffect(() => {
+    fetch("/api/settings/dashboard")
+      .then((r) => r.json())
+      .then((j: { hideNegociosSinVentas?: boolean }) => {
+        if (typeof j.hideNegociosSinVentas === "boolean") {
+          setHideNegociosSinVentas(j.hideNegociosSinVentas);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/settings/smtp")
+      .then((r) => r.json())
+      .then((data: MaskedSmtpState) => {
+        if (data && typeof data.host === "string") {
+          setSmtpMask(data);
+          setSmtpHost(data.host);
+          setSmtpPort(data.port);
+          setSmtpSecure(data.secure);
+          setSmtpUser(data.user);
+          setSmtpFrom(data.from);
+          setSmtpPass(data.maskedPass);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Load AI config on mount
   useEffect(() => {
     fetch("/api/settings/ai")
       .then((r) => r.json())
@@ -128,6 +185,62 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
       setTimeout(() => setSaveResult(null), 4000);
+    }
+  };
+
+  const saveSmtp = async () => {
+    setSmtpSaving(true);
+    setSmtpMessage(null);
+    try {
+      const res = await fetch("/api/settings/smtp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          host: smtpHost.trim(),
+          port: smtpPort,
+          secure: smtpSecure,
+          user: smtpUser.trim(),
+          pass: smtpPass,
+          from: smtpFrom.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Error al guardar SMTP");
+      }
+      const updated: MaskedSmtpState = await res.json();
+      setSmtpMask(updated);
+      setSmtpPass(updated.maskedPass);
+      setSmtpMessage("Configuración SMTP guardada.");
+      setTimeout(() => setSmtpMessage(null), 4000);
+    } catch (err) {
+      setSmtpMessage(err instanceof Error ? err.message : "No se pudo guardar SMTP.");
+    } finally {
+      setSmtpSaving(false);
+    }
+  };
+
+  const saveDashboardPrefs = async () => {
+    setDashPrefSaving(true);
+    setDashPrefMessage(null);
+    try {
+      const res = await fetch("/api/settings/dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hideNegociosSinVentas }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Error al guardar");
+      }
+      setDashPrefMessage("Preferencias del dashboard guardadas.");
+      setTimeout(() => setDashPrefMessage(null), 3500);
+    } catch (err) {
+      setDashPrefMessage(
+        err instanceof Error ? err.message : "No se pudo guardar.",
+      );
+    } finally {
+      setDashPrefSaving(false);
     }
   };
 
@@ -308,6 +421,57 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Dashboard (ventas) */}
+      <section className="border rounded-xl p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2 mb-2">
+          <BarChart2 className="h-5 w-5 text-sky-600" />
+          Dashboard de ventas
+        </h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          Por defecto está activo: no se muestran negocios cuya suma de ventas en el rango de fechas es cero
+          (tabla, KPIs alineados y gráfico mensual).
+        </p>
+        <label className="flex items-start gap-2 cursor-pointer max-w-xl">
+          <input
+            type="checkbox"
+            checked={hideNegociosSinVentas}
+            onChange={(e) => setHideNegociosSinVentas(e.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-input accent-emerald-600"
+          />
+          <span className="text-sm font-medium leading-snug">
+            Ocultar negocios sin ventas en el período filtrado
+          </span>
+        </label>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={saveDashboardPrefs}
+            disabled={dashPrefSaving}
+          >
+            {dashPrefSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Guardar preferencias del dashboard
+          </Button>
+          {dashPrefMessage && (
+            <span
+              className={cn(
+                "text-xs font-medium",
+                dashPrefMessage.includes("guardad")
+                  ? "text-emerald-600"
+                  : "text-red-600",
+              )}
+            >
+              {dashPrefMessage}
+            </span>
+          )}
+        </div>
+      </section>
+
       {/* Save Button + Feedback */}
       <div className="flex items-center gap-3">
         <Button
@@ -340,6 +504,141 @@ export default function SettingsPage() {
         )}
       </div>
 
+      {/* SMTP (Gmail u otro) */}
+      <section className="border rounded-xl p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2 mb-2">
+          <Mail className="h-5 w-5 text-amber-600" />
+          Correo SMTP (reportes)
+        </h3>
+        <p className="text-xs text-muted-foreground mb-4">
+          Para Gmail: host <code className="text-[11px] bg-muted px-1 rounded">smtp.gmail.com</code>,
+          puerto <strong>587</strong>, sin SSL directo (usa STARTTLS). Usa una{" "}
+          <strong>contraseña de aplicación</strong> si tienes 2FA. Los datos se guardan en{" "}
+          <code className="text-[11px] bg-muted px-1 rounded">data/smtp-config.json</code> (no se
+          versiona).
+        </p>
+        {smtpMask && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+            {smtpMask.ready ? (
+              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium">
+                <Check className="h-3.5 w-3.5" /> Listo para enviar
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-medium">
+                <AlertCircle className="h-3.5 w-3.5" /> Falta usuario o contraseña
+              </span>
+            )}
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">Host SMTP</label>
+            <input
+              type="text"
+              value={smtpHost}
+              onChange={(e) => setSmtpHost(e.target.value)}
+              className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Puerto</label>
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={smtpPort}
+              onChange={(e) => setSmtpPort(Number(e.target.value) || 587)}
+              className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            />
+          </div>
+          <div className="flex items-end pb-1">
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={smtpSecure}
+                onChange={(e) => setSmtpSecure(e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-emerald-600"
+              />
+              Conexión segura directa (SSL, p. ej. puerto 465)
+            </label>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">Usuario (correo)</label>
+            <input
+              type="text"
+              value={smtpUser}
+              onChange={(e) => setSmtpUser(e.target.value)}
+              className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              autoComplete="username"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              Contraseña o contraseña de aplicación
+            </label>
+            <div className="flex gap-2 mt-1">
+              <input
+                type={smtpPassVisible ? "text" : "password"}
+                value={smtpPass}
+                onChange={(e) => setSmtpPass(e.target.value)}
+                placeholder={smtpMask?.hasPass ? "Dejar máscara para mantener" : ""}
+                className="flex-1 px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40 font-mono"
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setSmtpPassVisible((v) => !v)}
+                className="px-3 py-2 border rounded-lg hover:bg-muted transition-colors shrink-0"
+                title={smtpPassVisible ? "Ocultar" : "Mostrar"}
+              >
+                {smtpPassVisible ? (
+                  <EyeOff className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <Eye className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              Remitente &quot;From&quot; (opcional)
+            </label>
+            <input
+              type="text"
+              value={smtpFrom}
+              onChange={(e) => setSmtpFrom(e.target.value)}
+              placeholder={smtpUser || "mismo que usuario"}
+              className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            />
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={saveSmtp}
+            disabled={smtpSaving}
+            className="gap-1"
+          >
+            {smtpSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Guardar SMTP
+          </Button>
+          {smtpMessage && (
+            <span
+              className={cn(
+                "text-xs font-medium",
+                smtpMessage.includes("guardada") ? "text-emerald-600" : "text-red-600",
+              )}
+            >
+              {smtpMessage}
+            </span>
+          )}
+        </div>
+      </section>
+
+      <ScheduledReportTasksSettings />
+
       {/* CuadreTarjetas Connection */}
       <section className="border rounded-xl p-4 sm:p-6">
         <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2 mb-4">
@@ -364,28 +663,6 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* Email Configuration */}
-      <section className="border rounded-xl p-4 sm:p-6">
-        <h3 className="text-base sm:text-lg font-semibold flex items-center gap-2 mb-4">
-          <Mail className="h-5 w-5 text-amber-600" />
-          Reportes por Email
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Configura el servidor SMTP en .env.local para habilitar el envio
-          automatico de reportes programados.
-        </p>
-        <div className="mt-3 p-3 bg-muted/50 rounded-lg">
-          <p className="text-xs font-mono text-muted-foreground">
-            SMTP_HOST=smtp.gmail.com
-            <br />
-            SMTP_PORT=587
-            <br />
-            SMTP_USER=tu@email.com
-            <br />
-            SMTP_PASS=app_password
-          </p>
-        </div>
-      </section>
     </div>
   );
 }

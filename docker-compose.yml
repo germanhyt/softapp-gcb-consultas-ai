@@ -13,3 +13,9 @@ services:
       - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - app_shared_network
+
+networks:
+  app_shared_network:
+    external: true

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Loader2, RefreshCw, BarChart3 } from "lucide-react";
 import { DateFilter, DashboardFilters } from "@/components/dashboard/date-filter";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
@@ -71,6 +71,38 @@ export default function DashboardPage() {
   const [chartsData, setChartsData]   = useState<ChartsData | null>(null);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
+  const [hideNegociosSinVentas, setHideNegociosSinVentas] = useState(true);
+  const persistHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings/dashboard")
+      .then((r) => r.json())
+      .then((j: { hideNegociosSinVentas?: boolean }) => {
+        if (typeof j.hideNegociosSinVentas === "boolean") {
+          setHideNegociosSinVentas(j.hideNegociosSinVentas);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const persistHideNegocios = useCallback((value: boolean) => {
+    if (persistHideTimerRef.current) clearTimeout(persistHideTimerRef.current);
+    persistHideTimerRef.current = setTimeout(() => {
+      fetch("/api/settings/dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hideNegociosSinVentas: value }),
+      }).catch(() => {});
+    }, 400);
+  }, []);
+
+  const onHideNegociosSinVentasChange = useCallback(
+    (v: boolean) => {
+      setHideNegociosSinVentas(v);
+      persistHideNegocios(v);
+    },
+    [persistHideNegocios],
+  );
 
   // ── Fetch turnos + negocios once ───────────────────────────────────────────
   useEffect(() => {
@@ -120,7 +152,7 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, [filters, fetchData]);
 
-  const displayNegocios: Record<string, NegocioData> = (() => {
+  const displayNegociosRaw = useMemo(() => {
     if (!data) return {};
     const merged: Record<string, NegocioData> = {};
     for (const m of data.months) {
@@ -147,11 +179,69 @@ export default function DashboardPage() {
       }
     }
     return merged;
-  })();
+  }, [data]);
 
-  const displayTotal       = data?.year_total       ?? 0;
-  const displayPresupuesto = data?.year_presupuesto;
-  const displayPropinas    = data?.year_propinas     ?? 0;
+  const displayNegocios = useMemo(() => {
+    if (!hideNegociosSinVentas) return displayNegociosRaw;
+    return Object.fromEntries(
+      Object.entries(displayNegociosRaw).filter(([, d]) => d.total > 0),
+    );
+  }, [displayNegociosRaw, hideNegociosSinVentas]);
+
+  const monthsForChart = useMemo(() => {
+    if (!data?.months.length) return [];
+    if (!hideNegociosSinVentas) return data.months;
+    const allowed = new Set(Object.keys(displayNegocios));
+    return data.months.map((m) => {
+      const negocios = Object.fromEntries(
+        Object.entries(m.negocios).filter(([k]) => allowed.has(k)),
+      );
+      const total = Object.values(negocios).reduce((s, nd) => s + nd.total, 0);
+      const presup = Object.values(negocios).reduce(
+        (s, nd) => s + (nd.presupuesto || 0),
+        0,
+      );
+      return {
+        ...m,
+        negocios,
+        total: Math.round(total * 100) / 100,
+        presupuesto:
+          presup > 0 ? Math.round(presup * 100) / 100 : undefined,
+      };
+    });
+  }, [data, hideNegociosSinVentas, displayNegocios]);
+
+  const { displayTotal, displayPresupuesto, displayPropinas } = useMemo(() => {
+    if (!data) {
+      return {
+        displayTotal: 0,
+        displayPresupuesto: undefined as number | undefined,
+        displayPropinas: 0,
+      };
+    }
+    if (!hideNegociosSinVentas) {
+      return {
+        displayTotal: data.year_total,
+        displayPresupuesto: data.year_presupuesto,
+        displayPropinas: data.year_propinas ?? 0,
+      };
+    }
+    let total = 0;
+    let presupuesto = 0;
+    let propinas = 0;
+    for (const nd of Object.values(displayNegocios)) {
+      total += nd.total;
+      presupuesto += nd.presupuesto || 0;
+      propinas += nd.propinas || 0;
+    }
+    return {
+      displayTotal: Math.round(total * 100) / 100,
+      displayPresupuesto:
+        presupuesto > 0 ? Math.round(presupuesto * 100) / 100 : undefined,
+      displayPropinas: propinas > 0 ? Math.round(propinas * 100) / 100 : 0,
+    };
+  }, [data, hideNegociosSinVentas, displayNegocios]);
+
   const negocio_count      = Object.keys(displayNegocios).length;
   const hasData            = !!(data && data.months.length > 0);
   const showMonthly        = hasData && (data?.months.length ?? 0) > 1;
@@ -185,7 +275,7 @@ export default function DashboardPage() {
               className="text-lg font-bold leading-tight"
               style={{ color: "var(--foreground)" }}
             >
-              Dashboard Cavas Reunidas
+              Dashboard 
             </h2>
             <p
               className="text-xs"
@@ -222,7 +312,14 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Filtros ───────────────────────────────────────────────────────── */}
-      <DateFilter filters={filters} turnos={turnos} negocioList={negocioList} onChange={setFilters} />
+      <DateFilter
+        filters={filters}
+        turnos={turnos}
+        negocioList={negocioList}
+        onChange={setFilters}
+        hideNegociosSinVentas={hideNegociosSinVentas}
+        onHideNegociosSinVentasChange={onHideNegociosSinVentasChange}
+      />
 
       {/* ── Loading ───────────────────────────────────────────────────────── */}
       {loading && (
@@ -273,7 +370,7 @@ export default function DashboardPage() {
 
           {showMonthly && (
             <SectionCard title="Tendencia Mensual — Ventas por Negocio">
-              <MonthlyChart months={data!.months} />
+              <MonthlyChart months={monthsForChart} />
             </SectionCard>
           )}
 

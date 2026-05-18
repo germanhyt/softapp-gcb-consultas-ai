@@ -3,6 +3,7 @@ import {
   readAIConfig,
   writeAIConfig,
   getMaskedConfig,
+  maskApiKey,
   type ProviderKey,
   PROVIDER_ENV_MAP,
 } from "@/lib/ai/ai-config";
@@ -27,7 +28,7 @@ export async function GET() {
 /**
  * POST /api/settings/ai
  * Body: { providers: { google: { apiKey: "..." }, ... }, models: { "gemini-2.0-flash": true, ... } }
- * If apiKey is empty or only dots/bullets (unchanged masked value), keeps the current key.
+ * If apiKey is empty, only dots/bullets, or equals the current masked key (••••••••xxxx), keeps the stored key.
  */
 export async function POST(req: Request) {
   try {
@@ -40,12 +41,16 @@ export async function POST(req: Request) {
         if (!(providerKey in PROVIDER_ENV_MAP)) continue;
 
         const incoming = ((value as { apiKey?: string })?.apiKey ?? "").trim();
-        const isMasked = /^[\u2022*]+$/u.test(incoming);
+        const stored = currentConfig.providers[providerKey]?.apiKey || "";
+        const maskedStored = maskApiKey(stored);
+        /** Placeholder: only bullets/asterisks, or exact masked value shown in UI (••••••••abcd). */
+        const unchangedPlaceholder =
+          incoming === "" ||
+          /^[\u2022*]+$/u.test(incoming) ||
+          (maskedStored !== "" && incoming === maskedStored);
 
-        if (isMasked || incoming === "") {
-          currentConfig.providers[providerKey] = {
-            apiKey: currentConfig.providers[providerKey]?.apiKey || "",
-          };
+        if (unchangedPlaceholder) {
+          currentConfig.providers[providerKey] = { apiKey: stored };
         } else {
           currentConfig.providers[providerKey] = { apiKey: incoming };
         }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,8 +68,14 @@ export default function ReportsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId }),
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("Execution failed", data);
+      } else {
         fetchTasks();
+        if (data.emailSent === false) {
+          console.warn("Correo no enviado (revisa SMTP o destinatarios)");
+        }
       }
     } catch {
       console.error("Execution failed");
@@ -104,7 +111,14 @@ export default function ReportsPage() {
             Tareas Programadas
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Reportes automáticos que se ejecutan y envían por email.
+            Vista rápida. Para editar destinatarios, cron y envío manual completo ve a{" "}
+            <Link
+              href="/settings#reportes-programados"
+              className="text-emerald-600 hover:underline font-medium"
+            >
+              Configuración → Reportes programados
+            </Link>
+            .
           </p>
         </div>
         <Button

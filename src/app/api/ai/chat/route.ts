@@ -1,12 +1,41 @@
-import { streamText } from "ai";
+import {
+  streamText,
+  convertToModelMessages,
+  generateId,
+  type UIMessage,
+} from "ai";
 import { getModel } from "@/lib/ai/providers";
 import { buildContext } from "@/lib/ai/context-builder";
+import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import { textFromUIMessageParts } from "@/lib/ai/ui-message-text";
 
 export const maxDuration = 120;
 
+const MAX_HISTORY = 20;
+
+/** Strip echoed context markers from prior assistant UI messages before sending to the model. */
+function sanitizeUIMessagesForModel(messages: UIMessage[]): UIMessage[] {
+  const recent = messages.slice(-MAX_HISTORY);
+  return recent.map((m) => {
+    if (m.role !== "assistant") return m;
+    const newParts = m.parts.map((p) => {
+      if (p.type === "text") {
+        return {
+          ...p,
+          text: p.text.replace(/\[DATOS DEL SISTEMA[^\]]*\]\s*/g, ""),
+        };
+      }
+      return p;
+    });
+    return { ...m, parts: newParts };
+  });
+}
+
 export async function POST(req: Request) {
   try {
-    const { messages, modelId } = await req.json();
+    const body = await req.json();
+    const messages = body.messages as UIMessage[] | undefined;
+    const modelId = body.modelId as string | undefined;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "No messages provided" }), {
@@ -15,9 +44,10 @@ export async function POST(req: Request) {
       });
     }
 
-    // Ensure lastUserMessage is always a string
-    const rawContent = messages[messages.length - 1]?.content;
-    const lastUserMessage = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent ?? "");
+    const lastUserUIMessage = [...messages].reverse().find((m) => m.role === "user");
+    const lastUserMessage = lastUserUIMessage
+      ? textFromUIMessageParts(lastUserUIMessage.parts)
+      : "";
 
     // Detect module & fetch relevant data
     let data = "";
@@ -51,38 +81,42 @@ export async function POST(req: Request) {
       .join("\n");
 
     // Stream response with selected model
-    const selectedModel = modelId || process.env.DEFAULT_MODEL_ID || "gemini-2.5-flash";
+    const selectedModel = modelId || process.env.DEFAULT_MODEL_ID || DEFAULT_MODEL_ID;
 
-    // Limit history to last 20 messages and strip stale [DATOS DEL SISTEMA] echoes from prior AI responses
-    const MAX_HISTORY = 20;
+    const forModel = sanitizeUIMessagesForModel(messages);
+    let modelMessages;
+    try {
+      modelMessages = await convertToModelMessages(forModel);
+    } catch (convErr) {
+      console.error("[AI Chat] convertToModelMessages:", convErr);
+      return new Response(
+        JSON.stringify({ error: "Formato de mensajes inválido" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
 
-    console.log(`[AI Chat] model=${selectedModel} systemLen=${fullSystem.length} msgCount=${messages.length} sent=${Math.min(messages.length, MAX_HISTORY)}`);
-    const recentMessages = messages.slice(-MAX_HISTORY);
-    const sanitizedMessages = recentMessages
-      .filter((m: { role: string; content: unknown }) => m.content != null)
-      .map((m: { role: string; content: unknown }) => {
-        const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-        return {
-          role: m.role as "user" | "assistant",
-          content: m.role === "assistant"
-            ? text.replace(/\[DATOS DEL SISTEMA[^\]]*\]\s*/g, "")
-            : text,
-        };
-      });
+    console.log(
+      `[AI Chat] model=${selectedModel} systemLen=${fullSystem.length} msgCount=${messages.length} sent=${forModel.length}`,
+    );
 
     const result = streamText({
       model: getModel(selectedModel),
       system: fullSystem,
-      messages: sanitizedMessages,
-      maxTokens: 32768,
+      messages: modelMessages,
+      maxOutputTokens: 32768,
       temperature: 0.3,
-      onFinish: ({ finishReason, usage }) => {
-        console.log(`[AI Chat] FINISH reason=${finishReason} promptTokens=${usage?.promptTokens} completionTokens=${usage?.completionTokens}`);
+      onFinish: ({ finishReason, totalUsage }) => {
+        console.log(
+          `[AI Chat] FINISH reason=${finishReason} inputTokens=${totalUsage?.inputTokens} outputTokens=${totalUsage?.outputTokens}`,
+        );
       },
     });
 
-    // X-Accel-Buffering: no prevents nginx from buffering the SSE stream
-    const streamResponse = result.toDataStreamResponse();
+    const streamResponse = result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      generateMessageId: generateId,
+      onError: () => "Error al generar la respuesta",
+    });
     const headers = new Headers(streamResponse.headers);
     headers.set("X-Accel-Buffering", "no");
     headers.set("Cache-Control", "no-cache");

@@ -1,6 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
-import { fileURLToPath } from "url";
 import type { ProviderKey } from "./models";
 
 export type { ProviderKey };
@@ -10,7 +9,12 @@ export interface AIConfig {
   models: Record<string, boolean>;
 }
 
-function findProjectRoot(startDir: string): string {
+/**
+ * Resolves the app root from process.cwd() (reliable for Next.js) instead of
+ * import.meta.url, which points at bundled output under .next/ and can yield
+ * a wrong or non-writable directory on Windows / Turbopack.
+ */
+function findProjectRootFromCwd(startDir: string): string {
   let currentDir = startDir;
 
   while (true) {
@@ -23,14 +27,14 @@ function findProjectRoot(startDir: string): string {
 
     const parentDir = dirname(currentDir);
     if (parentDir === currentDir) {
-      return process.cwd();
+      return startDir;
     }
 
     currentDir = parentDir;
   }
 }
 
-const PROJECT_ROOT = findProjectRoot(dirname(fileURLToPath(import.meta.url)));
+const PROJECT_ROOT = findProjectRootFromCwd(process.cwd());
 const CONFIG_DIR = join(PROJECT_ROOT, "data");
 const CONFIG_PATH = join(CONFIG_DIR, "ai-config.json");
 
@@ -45,8 +49,11 @@ export const MODEL_PROVIDER_MAP: Record<string, ProviderKey> = {
   "gemini-2.0-flash": "google",
   "gemini-2.5-flash": "google",
   "gemini-2.5-pro": "google",
+  "gemini-3-flash-preview": "google",
   "claude-sonnet-4-6": "anthropic",
   "gpt-4o": "openai",
+  "deepseek-v4-flash": "deepseek",
+  "deepseek-v4-pro": "deepseek",
   "deepseek-chat": "deepseek",
   "deepseek-reasoner": "deepseek",
 };
@@ -62,8 +69,11 @@ const DEFAULT_CONFIG: AIConfig = {
     "gemini-2.0-flash": true,
     "gemini-2.5-flash": true,
     "gemini-2.5-pro": true,
+    "gemini-3-flash-preview": true,
     "claude-sonnet-4-6": true,
     "gpt-4o": true,
+    "deepseek-v4-flash": true,
+    "deepseek-v4-pro": true,
     "deepseek-chat": true,
     "deepseek-reasoner": true,
   },
@@ -100,7 +110,10 @@ export function writeAIConfig(config: AIConfig): void {
     writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
   } catch (err) {
     console.error("[AIConfig] Error writing config:", err);
-    throw new Error("No se pudo guardar la configuración");
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `No se pudo guardar la configuración (${detail}). Ruta: ${CONFIG_PATH}`,
+    );
   }
 }
 
@@ -108,7 +121,13 @@ export function getApiKey(provider: ProviderKey): string {
   const config = readAIConfig();
   const fromConfig = config.providers[provider]?.apiKey;
 
-  if (fromConfig) return fromConfig;
+  if (fromConfig) {
+    // Masked UI values were mistakenly persisted as the key (starts with U+2022 •).
+    if (/[\u2022]/.test(fromConfig)) {
+      return process.env[PROVIDER_ENV_MAP[provider]] || "";
+    }
+    return fromConfig;
+  }
 
   return process.env[PROVIDER_ENV_MAP[provider]] || "";
 }

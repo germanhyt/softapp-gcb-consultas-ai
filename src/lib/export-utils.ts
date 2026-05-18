@@ -10,6 +10,16 @@ function getFilename(title: string, ext: string): string {
   return `refugio_${clean || "datos"}_${date}.${ext}`;
 }
 
+/** Captura DOM vía SVG foreignObject: respeta oklch y CSS moderno (Tailwind v4). */
+async function elementToCanvas(element: HTMLElement): Promise<HTMLCanvasElement> {
+  const { toCanvas } = await import("html-to-image");
+  return toCanvas(element, {
+    pixelRatio: 2,
+    backgroundColor: "#ffffff",
+    cacheBust: true,
+  });
+}
+
 export async function exportToExcel(
   table: ParsedTable,
   title?: string
@@ -38,22 +48,15 @@ export async function exportToPDF(
   element: HTMLElement,
   title?: string
 ): Promise<void> {
-  const html2canvas = (await import("html2canvas")).default;
   const { jsPDF } = await import("jspdf");
 
-  const canvas = await html2canvas(element, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: "#ffffff",
-  });
-
+  const canvas = await elementToCanvas(element);
   const imgData = canvas.toDataURL("image/png");
   const imgWidth = 190; // A4 width minus margins
   const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
   const pdf = new jsPDF("p", "mm", "a4");
 
-  // Title
   if (title) {
     pdf.setFontSize(14);
     pdf.text(title, 10, 15);
@@ -62,13 +65,12 @@ export async function exportToPDF(
   const yOffset = title ? 22 : 10;
   pdf.addImage(imgData, "PNG", 10, yOffset, imgWidth, imgHeight);
 
-  // Footer
   pdf.setFontSize(8);
   pdf.setTextColor(150);
   pdf.text(
     `El Refugio - ${new Date().toLocaleDateString("es-PE")}`,
     10,
-    pdf.internal.pageSize.height - 10
+    pdf.internal.pageSize.height - 10,
   );
 
   pdf.save(getFilename(title || "reporte", "pdf"));
@@ -78,14 +80,7 @@ export async function exportToPNG(
   element: HTMLElement,
   title?: string
 ): Promise<void> {
-  const html2canvas = (await import("html2canvas")).default;
-
-  const canvas = await html2canvas(element, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: "#ffffff",
-  });
-
+  const canvas = await elementToCanvas(element);
   const link = document.createElement("a");
   link.download = getFilename(title || "grafico", "png");
   link.href = canvas.toDataURL("image/png");

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { executeBigQuery, BQ_PROJECT } from "@/lib/data/bigquery-client";
 import { getCuadreTarjetasClient } from "@/lib/data/cuadre-tarjetas-client";
 import { getMediosPago, aggregateByCategory } from "@/lib/config/column-rules";
+import { VENTAS_CANAL_CASE_SQL } from "@/lib/data/ventas-canal-case-sql";
 
 const MONTHS_ES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -12,54 +13,6 @@ function monthLabel(mes: string): string {
   const [y, m] = mes.split("-").map(Number);
   return `${MONTHS_ES[(m || 1) - 1]} ${y}`;
 }
-
-// ─── Canal detection ──────────────────────────────────────────────────────────
-// Edit only this block when canal rules change.
-// Delivery sub-channels:  Rappi | PedidosYa | UberEats
-// Ventas web:             Fidelio
-// Pago Link:              Pago Link (sin Eventos)
-// Eventos:                Eventos (canal propio)
-// Llevar:                 Llevar (para go)
-// Cuponatic:              Cuponatic (SISA)
-// Bosque Mágico:          Bosque Mágico (Limanesas)
-// Default (presencial):   Salón
-const CANAL_CASE = `
-  CASE
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%RAPPI%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%RAPPI%'
-    THEN 'Rappi'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%PEDIDOSYA%'
-      OR UPPER(COALESCE(s.Cliente, '')) LIKE '%PEDIDOS YA%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%PEDIDOSYA%'
-    THEN 'PedidosYa'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%UBER%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%UBER%'
-    THEN 'UberEats'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%FIDELIO%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%FIDELIO%'
-    THEN 'Fidelio'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%PAGO LINK%'
-      OR UPPER(COALESCE(s.Cliente, '')) LIKE '%PAGOLINK%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%PAGO LINK%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%PAGOLINK%'
-    THEN 'Pago Link'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%EVENTOS%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%EVENTOS%'
-    THEN 'Eventos'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%CUPONATIC%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%CUPONATIC%'
-    THEN 'Cuponatic'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%BOSQUE%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%BOSQUE%'
-    THEN 'Bosque Mágico'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%LLEVAR%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%LLEVAR%'
-      OR UPPER(COALESCE(s.Cliente, '')) LIKE '%PARA LLEVAR%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%PARA LLEVAR%'
-    THEN 'Llevar'
-    ELSE 'Salón'
-  END
-`;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -104,7 +57,7 @@ export async function GET(req: NextRequest) {
         SUBSTR(s.Fecha, 1, 7)                              AS mes,
         s.CodigoNegocio,
         COALESCE(n.Descripcion, s.CodigoNegocio)           AS negocio_nombre,
-        (${CANAL_CASE})                                    AS canal,
+        (${VENTAS_CANAL_CASE_SQL})                         AS canal,
         ROUND(SUM(s.Monto), 2)                             AS total_ventas
       FROM \`${BQ_PROJECT}.Ventas.sales_df\` s
       LEFT JOIN \`${BQ_PROJECT}.Ventas.Negocios\` n

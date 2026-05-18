@@ -3,22 +3,23 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^1.2.0",
-    "@ai-sdk/google": "^1.2.0",
-    "@ai-sdk/openai": "^1.2.0",
+    "@ai-sdk/anthropic": "^3.0.78",
+    "@ai-sdk/deepseek": "^2.0.35",
+    "@ai-sdk/google": "^3.0.74",
+    "@ai-sdk/openai": "^3.0.64",
     "@ai-sdk/react": "latest",
     "@google-cloud/bigquery": "^8.1.1",
     "@types/react-plotly.js": "^2.6.4",
     "ai": "^6.0.182",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "html2canvas": "^1.4.1",
+    "html-to-image": "^1.11.13",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",
     "next": "^16.2.6",
@@ -30,7 +31,8 @@
     "react-plotly.js": "^2.6.0",
     "recharts": "^2.15.0",
     "tailwind-merge": "^3.0.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz",
+    "zod": "^4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.0.0",

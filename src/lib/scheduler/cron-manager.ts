@@ -1,28 +1,22 @@
 import cron from "node-cron";
 import { generateReport } from "./report-generator";
 import { sendReportEmail } from "./email-sender";
+import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import type { ScheduledTask, VentasReportPeriodPreset } from "./types";
+import { appendVentasPeriodToQuery } from "./ventas-report-period";
+import {
+  readSchedulerTasksFromDisk,
+  writeSchedulerTasksToDisk,
+} from "./tasks-persistence";
 
-export interface ScheduledTask {
-  id: string;
-  name: string;
-  description: string;
-  cronExpression: string;
-  query: string;
-  module: string;
-  recipients: string[];
-  modelId: string;
-  active: boolean;
-  lastRun?: string;
-  lastResult?: string;
-  lastStatus?: "success" | "error";
-}
+export type { ScheduledTask, VentasReportPeriodPreset } from "./types";
 
-// In-memory store (for production, use a database)
-let tasks: ScheduledTask[] = [];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const cronJobs = new Map<string, any>();
 
-// Default tasks for El Refugio
+let tasks: ScheduledTask[] = [];
+let schedulerInitialized = false;
+
 const DEFAULT_TASKS: ScheduledTask[] = [
   {
     id: "daily-conciliation",
@@ -33,7 +27,7 @@ const DEFAULT_TASKS: ScheduledTask[] = [
       "¿Cuál es el resumen de conciliación de ayer? Incluye cobertura, vouchers pendientes, diferencias y problemas detectados.",
     module: "cuadre_tarjetas",
     recipients: [],
-    modelId: "gemini-2.5-flash",
+    modelId: DEFAULT_MODEL_ID,
     active: false,
   },
   {
@@ -45,7 +39,7 @@ const DEFAULT_TASKS: ScheduledTask[] = [
       "¿Cuántos vouchers huérfanos hay acumulados? Si son más de 10, detalla los montos más grandes y sugiere acciones.",
     module: "cuadre_tarjetas",
     recipients: [],
-    modelId: "gemini-2.5-flash",
+    modelId: DEFAULT_MODEL_ID,
     active: false,
   },
   {
@@ -57,25 +51,39 @@ const DEFAULT_TASKS: ScheduledTask[] = [
       "Dame el resumen semanal de conciliación: cobertura promedio, mejor y peor día, algoritmo más efectivo, y depósitos pendientes.",
     module: "cuadre_tarjetas",
     recipients: [],
-    modelId: "gemini-2.5-flash",
+    modelId: DEFAULT_MODEL_ID,
     active: false,
   },
   {
     id: "daily-sales",
     name: "Reporte Diario de Ventas",
-    description: "Resumen de ventas del día anterior",
+    description: "Resumen de ventas (periodo configurable en Configuración)",
     cronExpression: "0 7 * * *",
     query:
-      "¿Cuáles fueron las ventas de ayer? Desglose por categoría y método de pago.",
+      "Genera un reporte de ventas con desglose por categoría y método de pago para el periodo indicado al final.",
     module: "ventas",
     recipients: [],
-    modelId: "gemini-2.5-flash",
+    modelId: DEFAULT_MODEL_ID,
+    ventasReportPeriod: "yesterday",
     active: false,
   },
 ];
 
+function persistTasks(): void {
+  writeSchedulerTasksToDisk(tasks);
+}
+
+function loadOrSeedTasks(): void {
+  const fromDisk = readSchedulerTasksFromDisk();
+  if (fromDisk !== null && fromDisk.length > 0) {
+    tasks = fromDisk;
+  } else {
+    tasks = [...DEFAULT_TASKS];
+    persistTasks();
+  }
+}
+
 function scheduleJob(task: ScheduledTask) {
-  // Stop existing job if any
   const existing = cronJobs.get(task.id);
   if (existing) {
     existing.stop();
@@ -90,25 +98,33 @@ function scheduleJob(task: ScheduledTask) {
   }
 
   const job = cron.schedule(task.cronExpression, async () => {
-    console.log(`[CronManager] Executing: ${task.name}`);
+    const current = tasks.find((t) => t.id === task.id);
+    if (!current || !current.active || current.recipients.length === 0) return;
+
+    console.log(`[CronManager] Executing: ${current.name}`);
 
     try {
-      const report = await generateReport(task.query, task.modelId);
+      const prompt = appendVentasPeriodToQuery(
+        current.module,
+        current.ventasReportPeriod,
+        current.query,
+      );
+      const report = await generateReport(prompt, current.modelId);
 
       await sendReportEmail({
-        to: task.recipients,
-        subject: task.name,
+        to: current.recipients,
+        subject: current.name,
         htmlContent: report.content,
-        taskName: task.name,
-        model: task.modelId,
+        taskName: current.name,
+        model: current.modelId,
       });
 
-      // Update task status
       const idx = tasks.findIndex((t) => t.id === task.id);
       if (idx !== -1) {
         tasks[idx].lastRun = new Date().toISOString();
         tasks[idx].lastStatus = "success";
         tasks[idx].lastResult = report.content.substring(0, 200) + "...";
+        persistTasks();
       }
     } catch (error) {
       console.error(`[CronManager] Task ${task.id} failed:`, error);
@@ -117,6 +133,7 @@ function scheduleJob(task: ScheduledTask) {
         tasks[idx].lastRun = new Date().toISOString();
         tasks[idx].lastStatus = "error";
         tasks[idx].lastResult = error instanceof Error ? error.message : "Error desconocido";
+        persistTasks();
       }
     }
   });
@@ -125,38 +142,52 @@ function scheduleJob(task: ScheduledTask) {
   console.log(`[CronManager] Scheduled: ${task.name} (${task.cronExpression})`);
 }
 
-export function initializeScheduler() {
-  if (tasks.length === 0) {
-    tasks = [...DEFAULT_TASKS];
-  }
-  tasks.filter((t) => t.active).forEach(scheduleJob);
+/**
+ * Carga tareas y registra crons. Se invoca desde las rutas API del scheduler
+ * (no desde instrumentation: importar el cron aquí arrastra BigQuery/node-cron al bundle del cliente).
+ */
+export function ensureSchedulerInitialized(): void {
+  if (schedulerInitialized) return;
+  loadOrSeedTasks();
+  tasks.filter((t) => t.active && t.recipients.length > 0).forEach(scheduleJob);
+  schedulerInitialized = true;
   console.log(`[CronManager] Initialized with ${tasks.length} tasks`);
 }
 
+export function initializeScheduler(): void {
+  ensureSchedulerInitialized();
+}
+
 export function getTasks(): ScheduledTask[] {
+  ensureSchedulerInitialized();
   return [...tasks];
 }
 
 export function updateTask(taskId: string, updates: Partial<ScheduledTask>): ScheduledTask | null {
+  ensureSchedulerInitialized();
   const idx = tasks.findIndex((t) => t.id === taskId);
   if (idx === -1) return null;
 
   tasks[idx] = { ...tasks[idx], ...updates };
   scheduleJob(tasks[idx]);
+  persistTasks();
   return tasks[idx];
 }
 
 export function addTask(task: Omit<ScheduledTask, "id">): ScheduledTask {
+  ensureSchedulerInitialized();
   const newTask: ScheduledTask = {
     ...task,
     id: `task_${Date.now()}`,
   };
   tasks.push(newTask);
   scheduleJob(newTask);
+  persistTasks();
   return newTask;
 }
 
 export function deleteTask(taskId: string): boolean {
+  ensureSchedulerInitialized();
   const existing = cronJobs.get(taskId);
   if (existing) {
     existing.stop();
@@ -167,18 +198,51 @@ export function deleteTask(taskId: string): boolean {
   if (idx === -1) return false;
 
   tasks.splice(idx, 1);
+  persistTasks();
   return true;
 }
 
-export async function executeTaskNow(taskId: string): Promise<string> {
+export interface ExecuteTaskOptions {
+  /** Si se indica y no está vacío, sustituye a los destinatarios de la tarea solo para este envío. */
+  recipients?: string[];
+  /** Si es true, no se envía correo aunque haya destinatarios. */
+  skipEmail?: boolean;
+  /** Solo ventas: periodo de datos para esta ejecución (si no se envía, se usa el guardado en la tarea). */
+  ventasReportPeriod?: VentasReportPeriodPreset;
+}
+
+export interface ExecuteTaskResult {
+  content: string;
+  emailSent: boolean;
+}
+
+export async function executeTaskNow(
+  taskId: string,
+  options?: ExecuteTaskOptions,
+): Promise<ExecuteTaskResult> {
+  ensureSchedulerInitialized();
   const task = tasks.find((t) => t.id === taskId);
   if (!task) throw new Error("Tarea no encontrada");
 
-  const report = await generateReport(task.query, task.modelId);
+  const period: VentasReportPeriodPreset | undefined =
+    options?.ventasReportPeriod !== undefined
+      ? options.ventasReportPeriod
+      : task.ventasReportPeriod;
+  const prompt = appendVentasPeriodToQuery(task.module, period, task.query);
+  const report = await generateReport(prompt, task.modelId);
 
-  if (task.recipients.length > 0) {
-    await sendReportEmail({
-      to: task.recipients,
+  const rawRecipients =
+    options?.recipients !== undefined
+      ? options.recipients
+      : task.recipients;
+  const to = Array.isArray(rawRecipients)
+    ? rawRecipients.map((e) => String(e).trim()).filter(Boolean)
+    : [];
+
+  let emailSent = false;
+  if (!options?.skipEmail && to.length > 0) {
+    emailSent = await sendReportEmail({
+      to,
       subject: `[Manual] ${task.name}`,
       htmlContent: report.content,
       taskName: task.name,
@@ -191,7 +255,8 @@ export async function executeTaskNow(taskId: string): Promise<string> {
     tasks[idx].lastRun = new Date().toISOString();
     tasks[idx].lastStatus = "success";
     tasks[idx].lastResult = report.content.substring(0, 200) + "...";
+    persistTasks();
   }
 
-  return report.content;
+  return { content: report.content, emailSent };
 }

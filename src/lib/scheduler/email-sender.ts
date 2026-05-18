@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import { getSmtpEffectiveConfig } from "@/lib/config/smtp-config";
 
 interface EmailOptions {
   to: string[];
@@ -7,29 +9,14 @@ interface EmailOptions {
   taskName: string;
 }
 
-function getTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-}
-
 function markdownToHtml(markdown: string): string {
   let html = markdown;
 
-  // Headers
   html = html.replace(/^### (.+)$/gm, '<h3 style="color:#064e3b;margin:16px 0 8px;font-size:16px;">$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2 style="color:#064e3b;margin:20px 0 10px;font-size:18px;">$1</h2>');
 
-  // Bold
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 
-  // Tables
   const tableRegex = /\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)/g;
   html = html.replace(tableRegex, (match) => {
     const lines = match.trim().split("\n");
@@ -58,11 +45,9 @@ function markdownToHtml(markdown: string): string {
     return table;
   });
 
-  // Lists
   html = html.replace(/^- (.+)$/gm, '<li style="margin:4px 0;">$1</li>');
   html = html.replace(/((?:<li[^>]*>.*<\/li>\n?)+)/g, '<ul style="padding-left:20px;margin:8px 0;">$1</ul>');
 
-  // Line breaks
   html = html.replace(/\n/g, "<br>");
 
   return html;
@@ -79,14 +64,12 @@ function buildEmailTemplate(content: string, taskName: string, model: string): s
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:20px;">
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-        <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,#059669,#047857);padding:24px 32px;text-align:center;">
             <h1 style="color:#ffffff;margin:0;font-size:22px;">El Refugio</h1>
             <p style="color:#a7f3d0;margin:4px 0 0;font-size:13px;">Reporte Automático</p>
           </td>
         </tr>
-        <!-- Task name -->
         <tr>
           <td style="padding:20px 32px 0;">
             <p style="color:#6b7280;font-size:12px;margin:0;">
@@ -94,7 +77,6 @@ function buildEmailTemplate(content: string, taskName: string, model: string): s
             </p>
           </td>
         </tr>
-        <!-- Content -->
         <tr>
           <td style="padding:16px 32px 32px;">
             <div style="font-size:14px;line-height:1.6;color:#1f2937;">
@@ -102,7 +84,6 @@ function buildEmailTemplate(content: string, taskName: string, model: string): s
             </div>
           </td>
         </tr>
-        <!-- Footer -->
         <tr>
           <td style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;text-align:center;">
             <p style="color:#9ca3af;font-size:11px;margin:0;">
@@ -119,19 +100,29 @@ function buildEmailTemplate(content: string, taskName: string, model: string): s
 }
 
 export async function sendReportEmail(options: EmailOptions & { model?: string }): Promise<boolean> {
-  const { to, subject, htmlContent, taskName, model = "gemini-2.5-flash" } = options;
+  const { to, subject, htmlContent, taskName, model = DEFAULT_MODEL_ID } = options;
 
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  const smtp = getSmtpEffectiveConfig();
+  if (!smtp) {
     console.warn("[EmailSender] SMTP not configured, skipping email");
     return false;
   }
 
   try {
-    const transporter = getTransporter();
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: {
+        user: smtp.user,
+        pass: smtp.pass,
+      },
+    });
+
     const fullHtml = buildEmailTemplate(htmlContent, taskName, model);
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      from: smtp.from,
       to: to.join(", "),
       subject: `[El Refugio] ${subject}`,
       html: fullHtml,

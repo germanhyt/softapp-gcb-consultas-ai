@@ -1,13 +1,14 @@
 import type { NextConfig } from "next";
-import { dirname } from "path";
+import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 
-const projectRoot = dirname(fileURLToPath(import.meta.url));
+/** Absolute app root so Turbopack does not infer the wrong directory on Windows. */
+const appDir = resolve(dirname(fileURLToPath(import.meta.url)));
 
 const nextConfig: NextConfig = {
   output: "standalone",
   turbopack: {
-    root: projectRoot,
+    root: appDir,
   },
 };
 

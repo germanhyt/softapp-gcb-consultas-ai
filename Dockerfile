@@ -1,21 +1,19 @@
 FROM node:20-alpine AS base
 
-# Install dependencies only when needed
-FROM base AS deps
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --only=production
-
 # Rebuild the source code only when needed
+# Repo uses Yarn classic (yarn.lock v1), not npm package-lock.json.
 FROM base AS builder
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+
+COPY package.json yarn.lock ./
+RUN corepack enable \
+  && corepack prepare yarn@1.22.22 --activate \
+  && yarn install --frozen-lockfile
+
 COPY . .
 
-# Build
-ENV NEXT_TELEMETRY_DISABLED=1   
-RUN npm run build
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN yarn build
 
 # Production image
 FROM base AS runner

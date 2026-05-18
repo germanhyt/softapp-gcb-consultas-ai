@@ -4,8 +4,13 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createDeepSeek } from "@ai-sdk/deepseek";
 import { getApiKey, getEnabledModelIds } from "./ai-config";
-import { AI_PROVIDERS, type AIProviderInfo } from "./models";
+import {
+  AI_PROVIDERS,
+  FALLBACK_GOOGLE_MODEL_ID,
+  type AIProviderInfo,
+} from "./models";
 
 // Re-export for backwards compatibility
 export { AI_PROVIDERS, type AIProviderInfo } from "./models";
@@ -18,7 +23,7 @@ export function getModel(modelId: string) {
   if (!info) {
     const googleKey = getApiKey("google");
     const google = createGoogleGenerativeAI({ apiKey: googleKey || undefined });
-    return google("gemini-2.0-flash");
+    return google(FALLBACK_GOOGLE_MODEL_ID);
   }
 
   const apiKey = getApiKey(info.providerKey);
@@ -37,15 +42,16 @@ export function getModel(modelId: string) {
       return openai(modelId as Parameters<typeof openai>[0]);
     }
     case "deepseek": {
-      const deepseek = createOpenAI({
-        baseURL: "https://api.deepseek.com",
+      const deepseekProvider = createDeepSeek({
         apiKey: apiKey || undefined,
       });
-      return deepseek(modelId as Parameters<typeof deepseek>[0]);
+      return deepseekProvider(
+        modelId as Parameters<typeof deepseekProvider>[0],
+      );
     }
     default: {
       const google = createGoogleGenerativeAI({ apiKey: getApiKey("google") || undefined });
-      return google("gemini-2.0-flash");
+      return google(FALLBACK_GOOGLE_MODEL_ID);
     }
   }
 }

@@ -2,6 +2,7 @@ import { getCuadreTarjetasClient } from "@/lib/data/cuadre-tarjetas-client";
 import { executeBigQuery, formatQueryResult } from "@/lib/data/bigquery-client";
 import { generateSQL } from "./sql-generator";
 import { getSystemPrompt, type ModuleType } from "./system-prompts";
+import { buildVentasScheduledReportSql } from "@/lib/data/ventas-scheduled-report-sql";
 
 interface ContextResult {
   module: ModuleType;
@@ -237,6 +238,17 @@ function getDateRange(message?: string): { startDate: string; endDate: string } 
   const now = new Date();
 
   if (message) {
+    // ── Reportes programados ventas: rango ISO fijado por appendVentasPeriodToQuery ──
+    const ventasIso = message.match(
+      /\[VENTAS_RANGO_ISO:(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})\]/,
+    );
+    if (ventasIso) {
+      let startDate = ventasIso[1];
+      let endDate = ventasIso[2];
+      if (startDate > endDate) [startDate, endDate] = [endDate, startDate];
+      return { startDate, endDate };
+    }
+
     // ── Try to extract explicit date range "desde X hasta Y" / "del X al Y" ──
     const rangeMatch = message.match(
       /(?:desde|del?|from)\s+(?:el\s+)?([\d\/\-]+|hoy|today)\s+(?:hasta|al?|to|(?:el\s+)?d[ií]a\s+(?:actual|de\s+hoy))\s+([\d\/\-]+|hoy|today|d[ií]a\s+actual)/i
@@ -640,6 +652,28 @@ async function fetchBigQueryData(
   userMessage: string,
   module: "ventas" | "estacionamiento" | "flujo"
 ): Promise<string> {
+  const ventasIso =
+    module === "ventas"
+      ? userMessage.match(/\[VENTAS_RANGO_ISO:(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})\]/)
+      : null;
+
+  if (ventasIso) {
+    let startIso = ventasIso[1];
+    let endIso = ventasIso[2];
+    if (startIso > endIso) [startIso, endIso] = [endIso, startIso];
+    try {
+      const sql = buildVentasScheduledReportSql(startIso, endIso);
+      const result = await executeBigQuery(sql);
+      const table = formatQueryResult(result);
+      return `**Consulta ejecutada:** \`\`\`sql\n${sql}\n\`\`\`\n\n**Resultados (${result.rowCount} filas):**\n\n${table}`;
+    } catch (err) {
+      console.error(
+        "[ContextBuilder] SQL fijo de ventas programadas falló; se usa generador SQL:",
+        err,
+      );
+    }
+  }
+
   const { startDate, endDate } = getDateRange(userMessage);
   const dateHint = `desde ${startDate} hasta ${endDate}`;
 

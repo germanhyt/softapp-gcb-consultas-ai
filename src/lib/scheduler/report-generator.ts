@@ -1,5 +1,6 @@
 import { generateText } from "ai";
 import { getModel } from "@/lib/ai/providers";
+import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
 import { buildContext } from "@/lib/ai/context-builder";
 
 interface ReportResult {
@@ -11,7 +12,7 @@ interface ReportResult {
 
 export async function generateReport(
   query: string,
-  modelId: string = "gemini-2.5-flash"
+  modelId: string = DEFAULT_MODEL_ID
 ): Promise<ReportResult> {
   const { data, systemPrompt, module } = await buildContext(query);
 
@@ -28,7 +29,7 @@ export async function generateReport(
     model: getModel(modelId),
     system: fullSystem,
     prompt: query,
-    maxTokens: 4096,
+    maxOutputTokens: 4096,
     temperature: 0.3,
   });
 

@@ -1,5 +1,6 @@
 import { generateText } from "ai";
 import { getModel } from "./providers";
+import { DEFAULT_MODEL_ID } from "./models";
 import { BQ_PROJECT, getSchemaText } from "@/lib/data/bigquery-client";
 
 type BQModule = "ventas" | "estacionamiento" | "flujo";
@@ -15,6 +16,7 @@ const MODULE_HINTS: Record<BQModule, string> = {
 - Para ventas de hoy: LEFT(Fecha, 10) = FORMAT_DATE('%Y-%m-%d', CURRENT_DATE('America/Lima'))
 - Para ventas de ayer: LEFT(Fecha, 10) = FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE('America/Lima'), INTERVAL 1 DAY))
 - Para ventas de un mes: LEFT(Fecha, 7) = 'YYYY-MM'
+- Si el texto incluye [VENTAS_RANGO_ISO:YYYY-MM-DD..YYYY-MM-DD], filtra con SUBSTR(TRIM(CAST(s.Fecha AS STRING)), 1, 10) >= 'inicio' AND SUBSTR(TRIM(CAST(s.Fecha AS STRING)), 1, 10) <= 'fin' (inclusive). Equivale al dashboard. No sustituyas por "ayer" ni CURRENT_DATE si ese marcador está presente.
 - NUNCA uses PARSE_DATE ni CAST(Fecha AS DATE) directamente, siempre LEFT(Fecha, 10).
 - Para filtrar por HORA usa LEFT(Hora, 2) o la columna Hora directamente con comparación de strings:
   Ejemplo: Hora >= '08:00:00' AND Hora < '12:00:00' (ventas entre 8am y mediodía)
@@ -23,6 +25,7 @@ const MODULE_HINTS: Record<BQModule, string> = {
   Para rangos nocturnos que cruzan medianoche (ej: 8pm a 2am), usa OR: (Hora >= '20:00:00' OR Hora < '02:00:00')
 - Turno puede ser 'Mañana' o 'Noche'. Cuando el usuario diga "turno mañana" o "turno noche" filtra por esta columna.
 - Monto es la columna de importe. Cantidad es unidades vendidas.
+- No existe una sola columna "medio de pago"; para desglose por canal/medio usa CASE sobre Cliente y Producto (Rappi, PedidosYa, UberEats, Fidelio, Pago Link, Eventos, Salón presencial, etc.), coherente con análisis de canales de venta.
 - Para ventas por negocio: agrupar por CodigoNegocio y hacer JOIN con Negocios.Descripcion.
 - IMPORTANTE: Cuando el usuario mencione "bar", "el bar", "del bar" se refiere al negocio "BAR REFUGIO". SIEMPRE filtra con: UPPER(COALESCE(n.Descripcion, '')) LIKE '%BAR%'
 - Si el usuario pide ventas de un negocio específico, SIEMPRE haz JOIN con Negocios y filtra por Descripcion.
@@ -101,10 +104,10 @@ Genera el SQL:`;
 
   try {
     const result = await generateText({
-      model: getModel("gemini-2.5-flash"),
+      model: getModel(DEFAULT_MODEL_ID),
       system: SYSTEM_SQL,
       prompt: userPrompt,
-      maxTokens: 4096,
+      maxOutputTokens: 4096,
       temperature: 0.1,
     });
 
