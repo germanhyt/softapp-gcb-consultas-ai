@@ -25,6 +25,7 @@ export const metadata: Metadata = {
 
 const NAV_LINKS = [
   { href: "/",             label: "Dashboard"     },
+  { href: "/toteat",       label: "Toteat"        },
   { href: "/instancias",   label: "Instancias"    },
   { href: "/auditoria",    label: "Auditoría"     },
   { href: "/proyecciones", label: "Proyecciones", hideMobile: true },
