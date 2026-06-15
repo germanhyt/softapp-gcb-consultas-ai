@@ -1,5 +1,7 @@
 "use client";
 
+import { COMPANY_NAME } from "@/lib/config/brand";
+
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useGlobalChat, type ChatMessage } from "@/contexts/chat-context";
 import { ChatInput } from "./chat-input";
@@ -217,7 +219,7 @@ function ExpandedChatMessage({
       <div className="flex-1 space-y-2 overflow-hidden min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-xs sm:text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-            {isUser ? "Tú" : "Asistente El Refugio"}
+            {isUser ? "Tú" : `Asistente ${COMPANY_NAME}`}
           </span>
           <span className="text-[10px] sm:text-xs" style={{ color: "var(--foreground-subtle)" }}>
             {formatTime(message.timestamp)}
@@ -380,7 +382,7 @@ export function FloatingChatWindow() {
           </div>
           <div>
             <h3 className="text-xs sm:text-sm font-semibold text-white">
-              Asistente El Refugio
+              {`Asistente ${COMPANY_NAME}`}
             </h3>
             <div className="flex items-center gap-1.5">
               <span className="relative flex h-1.5 w-1.5">
@@ -512,7 +514,7 @@ export function FloatingChatWindow() {
               </div>
 
               <h3 className="text-sm sm:text-base font-bold mb-1" style={{ color: "var(--foreground)" }}>
-                Asistente El Refugio
+                {`Asistente ${COMPANY_NAME}`}
               </h3>
               <p className="text-xs max-w-[280px] mb-5 leading-relaxed" style={{ color: "var(--foreground-muted)" }}>
                 Puedo ayudarte con{" "}
@@ -708,7 +710,7 @@ export function ExpandedChatPanel() {
           </div>
           <div>
             <h3 className="text-sm sm:text-base font-semibold text-white">
-              Asistente El Refugio
+              {`Asistente ${COMPANY_NAME}`}
             </h3>
             <div className="flex items-center gap-2">
               <span className="relative flex h-2 w-2">
@@ -841,7 +843,7 @@ export function ExpandedChatPanel() {
               </div>
 
               <h3 className="text-xl sm:text-2xl font-bold mb-2" style={{ color: "var(--foreground)" }}>
-                Asistente El Refugio
+                {`Asistente ${COMPANY_NAME}`}
               </h3>
               <p className="text-xs sm:text-sm max-w-md mb-8 leading-relaxed" style={{ color: "var(--foreground-muted)" }}>
                 Consulta sobre{" "}

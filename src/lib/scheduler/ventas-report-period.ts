@@ -68,6 +68,12 @@ export function resolveVentasDateRangeYmd(
         end: yesterday,
         label: "día anterior (Lima)",
       };
+    case "yesterday_to_today":
+      return {
+        start: yesterday,
+        end: todayLima,
+        label: "ayer + día en curso (Lima)",
+      };
     case "last_7_days":
       return {
         start: addCalendarDaysYmd(yesterday, -6),
@@ -136,6 +142,7 @@ ${isoMarker}`;
 
 export const VENTAS_PERIOD_LABELS: Record<VentasReportPeriodPreset, string> = {
   yesterday: "Día anterior (ayer en Lima)",
+  yesterday_to_today: "Ayer + día en curso (hoy en Lima)",
   last_7_days: "Últimos 7 días (hasta ayer)",
   last_30_days: "Últimos 30 días (hasta ayer)",
   last_complete_week: "Última semana completa (lun–dom)",

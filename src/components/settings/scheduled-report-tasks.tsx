@@ -30,15 +30,33 @@ interface ScheduledTask {
   modelId: string;
   active: boolean;
   ventasReportPeriod?: VentasReportPeriodPreset;
+  toteatRestaurantId?: string;
+  toteatHourFrom?: number | null;
+  toteatHourTo?: number | null;
   lastRun?: string;
   lastResult?: string;
   lastStatus?: "success" | "error";
 }
 
+interface ToteatRestaurantOption {
+  id: string;
+  name: string;
+}
+
+type ToteatHourPreset =
+  | "all_day"
+  | "morning_shift"
+  | "afternoon_shift"
+  | "night_shift"
+  | "custom";
+
 type TaskDraft = {
   recipients: string;
   cron: string;
   ventasPeriod: VentasReportPeriodPreset;
+  toteatRestaurantId: string;
+  toteatHourFrom: string;
+  toteatHourTo: string;
 };
 
 function recipientsToText(recipients: string[]): string {
@@ -52,12 +70,21 @@ const CRON_HELP: Record<string, string> = {
   "0 9 * * 1": "Lunes 9:00",
 };
 
+const TOTEAT_EXTRA_PERIODS: VentasReportPeriodPreset[] = ["yesterday_to_today"];
+
 function formatCron(expr: string): string {
   return CRON_HELP[expr] || expr;
 }
 
+function periodOptionsForModule(module: string): VentasReportPeriodPreset[] {
+  const base = Object.keys(VENTAS_PERIOD_LABELS) as VentasReportPeriodPreset[];
+  if (module === "toteat") return base;
+  return base.filter((p) => !TOTEAT_EXTRA_PERIODS.includes(p));
+}
+
 export function ScheduledReportTasksSettings() {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
+  const [toteatRestaurants, setToteatRestaurants] = useState<ToteatRestaurantOption[]>([]);
   const [drafts, setDrafts] = useState<Record<string, TaskDraft>>({});
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -71,7 +98,17 @@ export function ScheduledReportTasksSettings() {
       next[t.id] = {
         recipients: recipientsToText(t.recipients),
         cron: t.cronExpression,
-        ventasPeriod: t.module === "ventas" ? t.ventasReportPeriod ?? "yesterday" : "yesterday",
+        ventasPeriod:
+          t.module === "ventas" || t.module === "toteat"
+            ? t.ventasReportPeriod ?? "yesterday"
+            : "yesterday",
+        toteatRestaurantId: t.toteatRestaurantId ?? "",
+        toteatHourFrom:
+          t.toteatHourFrom !== undefined && t.toteatHourFrom !== null
+            ? String(t.toteatHourFrom)
+            : "",
+        toteatHourTo:
+          t.toteatHourTo !== undefined && t.toteatHourTo !== null ? String(t.toteatHourTo) : "",
       };
     }
     setDrafts(next);
@@ -94,6 +131,12 @@ export function ScheduledReportTasksSettings() {
 
   useEffect(() => {
     fetchTasks();
+    fetch("/api/toteat/restaurants")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setToteatRestaurants(data);
+      })
+      .catch(() => {});
   }, [fetchTasks]);
 
   const showBanner = (tone: "ok" | "err", text: string) => {
@@ -107,6 +150,51 @@ export function ScheduledReportTasksSettings() {
       .map((s) => s.trim())
       .filter(Boolean);
 
+  const parseOptionalHour = (text: string): number | null | undefined => {
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    const h = Number(trimmed);
+    if (!Number.isInteger(h) || h < 0 || h > 23) return undefined;
+    return h;
+  };
+
+  const getToteatHourPreset = (d: TaskDraft): ToteatHourPreset => {
+    if (d.toteatHourFrom === "8" && d.toteatHourTo === "11") return "morning_shift";
+    if (d.toteatHourFrom === "12" && d.toteatHourTo === "15") return "afternoon_shift";
+    if (d.toteatHourFrom === "16" && d.toteatHourTo === "7") return "night_shift";
+    if (!d.toteatHourFrom.trim() && !d.toteatHourTo.trim()) return "all_day";
+    return "custom";
+  };
+
+  const applyToteatHourPreset = (taskId: string, d: TaskDraft, preset: ToteatHourPreset) => {
+    if (preset === "custom") return;
+    if (preset === "all_day") {
+      setDrafts((prev) => ({
+        ...prev,
+        [taskId]: { ...d, toteatHourFrom: "", toteatHourTo: "" },
+      }));
+      return;
+    }
+    if (preset === "morning_shift") {
+      setDrafts((prev) => ({
+        ...prev,
+        [taskId]: { ...d, toteatHourFrom: "8", toteatHourTo: "11" },
+      }));
+      return;
+    }
+    if (preset === "afternoon_shift") {
+      setDrafts((prev) => ({
+        ...prev,
+        [taskId]: { ...d, toteatHourFrom: "12", toteatHourTo: "15" },
+      }));
+      return;
+    }
+    setDrafts((prev) => ({
+      ...prev,
+      [taskId]: { ...d, toteatHourFrom: "16", toteatHourTo: "7" },
+    }));
+  };
+
   const saveTask = async (task: ScheduledTask) => {
     const d = drafts[task.id];
     if (!d) return;
@@ -118,8 +206,18 @@ export function ScheduledReportTasksSettings() {
         recipients,
         cronExpression: d.cron.trim(),
       };
-      if (task.module === "ventas") {
+      if (task.module === "ventas" || task.module === "toteat") {
         body.ventasReportPeriod = d.ventasPeriod ?? "yesterday";
+      }
+      if (task.module === "toteat") {
+        body.toteatRestaurantId = d.toteatRestaurantId.trim() || undefined;
+        const hourFrom = parseOptionalHour(d.toteatHourFrom);
+        const hourTo = parseOptionalHour(d.toteatHourTo);
+        if (hourFrom === undefined || hourTo === undefined) {
+          throw new Error("Horas Toteat inválidas (usa 0-23 o deja vacío)");
+        }
+        body.toteatHourFrom = hourFrom;
+        body.toteatHourTo = hourTo;
       }
       const res = await fetch("/api/scheduler", {
         method: "PATCH",
@@ -167,8 +265,15 @@ export function ScheduledReportTasksSettings() {
           taskId,
           skipEmail: opts.skipEmail,
           recipients: customRecipients,
-          ...(task?.module === "ventas" && d
-            ? { ventasReportPeriod: d.ventasPeriod }
+          ...(task?.module === "ventas" || task?.module === "toteat"
+            ? { ventasReportPeriod: d?.ventasPeriod }
+            : {}),
+          ...(task?.module === "toteat" && d
+            ? {
+                toteatRestaurantId: d.toteatRestaurantId.trim() || undefined,
+                toteatHourFrom: parseOptionalHour(d.toteatHourFrom),
+                toteatHourTo: parseOptionalHour(d.toteatHourTo),
+              }
             : {}),
         }),
       });
@@ -220,9 +325,10 @@ export function ScheduledReportTasksSettings() {
       </div>
       <p className="text-xs text-muted-foreground mb-4">
         Define expresión cron (cuándo se envía), destinatarios y activa el envío automático. En tareas
-        de <strong>ventas</strong> puedes elegir el <strong>periodo de datos</strong> (qué fechas se
-        analizan; zona Lima). Puedes ejecutar en el momento con o sin correo; si rellenas destinatarios
-        aquí, se usan aunque no hayas pulsado Guardar.
+        de <strong>ventas</strong> o <strong>toteat</strong> puedes elegir el <strong>periodo de datos</strong>{" "}
+        (qué fechas se analizan; zona Lima). Las tareas <strong>toteat</strong> incluyen cruce interno y
+        adjuntan un CSV. Puedes ejecutar en el momento con o sin correo; si rellenas destinatarios aquí,
+        se usan aunque no hayas pulsado Guardar.
       </p>
 
       {banner && (
@@ -241,7 +347,19 @@ export function ScheduledReportTasksSettings() {
           const d = drafts[task.id] ?? {
             recipients: recipientsToText(task.recipients),
             cron: task.cronExpression,
-            ventasPeriod: task.module === "ventas" ? task.ventasReportPeriod ?? "yesterday" : "yesterday",
+            ventasPeriod:
+              task.module === "ventas" || task.module === "toteat"
+                ? task.ventasReportPeriod ?? "yesterday"
+                : "yesterday",
+            toteatRestaurantId: task.toteatRestaurantId ?? "",
+            toteatHourFrom:
+              task.toteatHourFrom !== undefined && task.toteatHourFrom !== null
+                ? String(task.toteatHourFrom)
+                : "",
+            toteatHourTo:
+              task.toteatHourTo !== undefined && task.toteatHourTo !== null
+                ? String(task.toteatHourTo)
+                : "",
           };
 
           return (
@@ -325,10 +443,10 @@ export function ScheduledReportTasksSettings() {
                     />
                   </div>
 
-                  {task.module === "ventas" && (
+                  {(task.module === "ventas" || task.module === "toteat") && (
                     <div>
                       <label className="text-xs font-medium text-muted-foreground">
-                        Periodo de ventas (datos, America/Lima)
+                        Periodo de datos (America/Lima)
                       </label>
                       <select
                         value={d.ventasPeriod}
@@ -338,12 +456,16 @@ export function ScheduledReportTasksSettings() {
                             [task.id]: {
                               ...d,
                               ventasPeriod: e.target.value as VentasReportPeriodPreset,
+                              ...(task.module === "toteat" &&
+                              (e.target.value as VentasReportPeriodPreset) === "yesterday_to_today"
+                                ? { toteatHourFrom: "", toteatHourTo: "" }
+                                : {}),
                             },
                           }))
                         }
                         className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                       >
-                        {(Object.keys(VENTAS_PERIOD_LABELS) as VentasReportPeriodPreset[]).map((key) => (
+                        {periodOptionsForModule(task.module).map((key) => (
                           <option key={key} value={key}>
                             {VENTAS_PERIOD_LABELS[key]}
                           </option>
@@ -355,6 +477,56 @@ export function ScheduledReportTasksSettings() {
                         ≤ ayer). &quot;Últimos 7 días&quot; es ventana móvil de 7 días hasta ayer.
                       </p>
                     </div>
+                  )}
+
+                  {task.module === "toteat" && (
+                    <>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Restaurante Toteat
+                        </label>
+                        <select
+                          value={d.toteatRestaurantId}
+                          onChange={(e) =>
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [task.id]: { ...d, toteatRestaurantId: e.target.value },
+                            }))
+                          }
+                          className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                        >
+                          <option value="">Restaurante por defecto</option>
+                          {toteatRestaurants.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          Ventas por turno
+                        </label>
+                        <select
+                          value={getToteatHourPreset(d)}
+                          onChange={(e) =>
+                            applyToteatHourPreset(task.id, d, e.target.value as ToteatHourPreset)
+                          }
+                          className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                        >
+                          <option value="all_day">Todo el día</option>
+                          <option value="morning_shift">Mañana (08:00–11:59)</option>
+                          <option value="afternoon_shift">Tarde (12:00–15:59)</option>
+                          <option value="night_shift">Noche (16:00–07:59)</option>
+                          <option value="custom">Personalizado (manual)</option>
+                        </select>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        El filtro horario usa zona America/Lima. El correo incluye resumen HTML y CSV
+                        adjunto con cruce interno. Si la hora inicio es mayor a la hora fin, se
+                        interpreta como rango nocturno cruzando día.
+                      </p>
+                    </>
                   )}
                 </div>
 

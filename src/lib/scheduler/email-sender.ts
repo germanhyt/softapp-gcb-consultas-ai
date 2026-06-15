@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import { COMPANY_NAME, PRODUCT_NAME } from "@/lib/config/brand";
 import { getSmtpEffectiveConfig } from "@/lib/config/smtp-config";
 
 interface EmailOptions {
@@ -7,6 +8,11 @@ interface EmailOptions {
   subject: string;
   htmlContent: string;
   taskName: string;
+  attachments?: Array<{
+    filename: string;
+    content: string | Buffer;
+    contentType?: string;
+  }>;
 }
 
 function markdownToHtml(markdown: string): string {
@@ -66,7 +72,7 @@ function buildEmailTemplate(content: string, taskName: string, model: string): s
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
         <tr>
           <td style="background:linear-gradient(135deg,#059669,#047857);padding:24px 32px;text-align:center;">
-            <h1 style="color:#ffffff;margin:0;font-size:22px;">El Refugio</h1>
+            <h1 style="color:#ffffff;margin:0;font-size:22px;">${COMPANY_NAME}</h1>
             <p style="color:#a7f3d0;margin:4px 0 0;font-size:13px;">Reporte Automático</p>
           </td>
         </tr>
@@ -87,7 +93,7 @@ function buildEmailTemplate(content: string, taskName: string, model: string): s
         <tr>
           <td style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;text-align:center;">
             <p style="color:#9ca3af;font-size:11px;margin:0;">
-              Este reporte fue generado automáticamente por Consultas Refugio v2.
+              Este reporte fue generado automáticamente por ${PRODUCT_NAME} v2.
               <br>No responder a este correo.
             </p>
           </td>
@@ -100,7 +106,7 @@ function buildEmailTemplate(content: string, taskName: string, model: string): s
 }
 
 export async function sendReportEmail(options: EmailOptions & { model?: string }): Promise<boolean> {
-  const { to, subject, htmlContent, taskName, model = DEFAULT_MODEL_ID } = options;
+  const { to, subject, htmlContent, taskName, model = DEFAULT_MODEL_ID, attachments } = options;
 
   const smtp = getSmtpEffectiveConfig();
   if (!smtp) {
@@ -124,8 +130,13 @@ export async function sendReportEmail(options: EmailOptions & { model?: string }
     await transporter.sendMail({
       from: smtp.from,
       to: to.join(", "),
-      subject: `[El Refugio] ${subject}`,
+      subject: `[${COMPANY_NAME}] ${subject}`,
       html: fullHtml,
+      attachments: attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType ?? "text/csv; charset=utf-8",
+      })),
     });
 
     console.log(`[EmailSender] Report sent to ${to.join(", ")}`);

@@ -1,4 +1,5 @@
 import type { ParsedTable } from "./parse-tables";
+import { COMPANY_NAME } from "@/lib/config/brand";
 
 function getFilename(title: string, ext: string): string {
   const date = new Date().toISOString().split("T")[0];
@@ -68,7 +69,7 @@ export async function exportToPDF(
   pdf.setFontSize(8);
   pdf.setTextColor(150);
   pdf.text(
-    `El Refugio - ${new Date().toLocaleDateString("es-PE")}`,
+    `${COMPANY_NAME} - ${new Date().toLocaleDateString("es-PE")}`,
     10,
     pdf.internal.pageSize.height - 10,
   );

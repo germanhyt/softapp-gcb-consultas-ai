@@ -23,6 +23,13 @@ type Metric    = "total" | "transacciones";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const TURNO_COLORS: Record<string, string> = {
+  manana: "#f59e0b",
+  "mañana": "#f59e0b",
+  tarde: "#10b981",
+  noche: "#6366f1",
+  "turno dia": "#10b981",
+  "turno día": "#10b981",
+  "turno noche": "#6366f1",
   desayuno: "#f59e0b", breakfast: "#f59e0b",
   almuerzo: "#10b981", lunch:     "#10b981",
   cena:     "#6366f1", dinner:    "#6366f1",

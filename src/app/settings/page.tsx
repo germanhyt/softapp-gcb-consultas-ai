@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScheduledReportTasksSettings } from "@/components/settings/scheduled-report-tasks";
+import { UsersManagementSettings } from "@/components/settings/users-management";
 
 interface ProviderDisplay {
   key: ProviderKey;
@@ -638,6 +639,8 @@ export default function SettingsPage() {
       </section>
 
       <ScheduledReportTasksSettings />
+
+      <UsersManagementSettings />
 
       {/* CuadreTarjetas Connection */}
       <section className="border rounded-xl p-4 sm:p-6">

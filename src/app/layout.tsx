@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { COMPANY_NAME, PRODUCT_NAME } from "@/lib/config/brand";
 import Image from "next/image";
 import { Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ChatProvider } from "@/contexts/chat-context";
 import { FloatingChat } from "@/components/assistant/floating-chat";
+import { UserNav } from "@/components/auth/user-nav";
 
 const hanken = Hanken_Grotesk({
   subsets: ["latin"],
@@ -19,8 +21,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Consultas Refugio · Asistente Inteligente",
-  description: "Asistente inteligente para El Refugio - Conciliación, Ventas, Estacionamiento y Flujo de Personas.",
+  title: `${PRODUCT_NAME} · Asistente Inteligente`,
+  description: `Asistente inteligente para ${COMPANY_NAME} - Conciliación, Ventas, Estacionamiento y Flujo de Personas.`,
 };
 
 const NAV_LINKS = [
@@ -63,7 +65,7 @@ export default function RootLayout({
                 >
                   <Image
                     src="/logo-refugio.png"
-                    alt="El Refugio"
+                    alt={COMPANY_NAME}
                     fill
                     sizes="40px"
                     className="object-cover"
@@ -75,13 +77,13 @@ export default function RootLayout({
                     className="text-sm sm:text-[15px] font-bold leading-tight"
                     style={{ color: "var(--foreground)" }}
                   >
-                    Consultas Refugio
+                    {PRODUCT_NAME}
                   </h1>
                   <p
                     className="text-[10px] sm:text-[11px] leading-tight font-medium"
                     style={{ color: "var(--foreground-muted)" }}
                   >
-                    Asistente Inteligente
+                    {COMPANY_NAME}
                   </p>
                 </div>
               </div>
@@ -99,6 +101,7 @@ export default function RootLayout({
                     {label}
                   </a>
                 ))}
+                <UserNav />
               </nav>
             </div>
           </header>

@@ -1,15 +1,20 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, RefreshCw, Store, ListOrdered, CreditCard, Package } from "lucide-react";
+import { Loader2, RefreshCw, Store, ListOrdered, CreditCard, Package, Clock } from "lucide-react";
 import { TrendCharts, ChartsData } from "@/components/dashboard/trend-charts";
+import { BusinessSplitPanel } from "@/components/toteat/business-split-panel";
 import { formatSoles } from "@/lib/config/column-rules";
 
 interface ToteatDashboardResponse {
   restaurant?: { id: string; name: string };
   start_date: string;
   end_date: string;
+  applied_filters?: { hour_from: number | null; hour_to: number | null; timezone?: string };
   total_sales: number;
+  total_sales_after_discounts: number;
+  total_taxes: number;
+  total_net_sales: number;
   total_paid: number;
   total_discounts: number;
   total_gratuity: number;
@@ -19,6 +24,17 @@ interface ToteatDashboardResponse {
   top_waiters: Array<{ waiterName: string; sales: number; orders: number }>;
   payment_methods: Array<{ name: string; amount: number; count: number }>;
   top_products: Array<{ name: string; quantity: number; revenue: number }>;
+  business_split?: {
+    rules: string[];
+    by_business: Array<{
+      business: "Sisa" | "Limanesas" | "Refugio";
+      total: number;
+      percentage: number;
+      line_items: number;
+      orders: number;
+    }>;
+    total: number;
+  };
   cancellations?: {
     records: number;
     canceled_orders: number;
@@ -42,6 +58,8 @@ interface ToteatRestaurantOption {
   name: string;
 }
 
+type ShiftPreset = "all_day" | "morning_shift" | "afternoon_shift" | "night_shift";
+
 function defaultRange() {
   const now = new Date();
   const y = now.getFullYear();
@@ -58,9 +76,23 @@ export default function ToteatDashboardPage() {
   const [endDate, setEndDate] = useState(defaults.endDate);
   const [restaurants, setRestaurants] = useState<ToteatRestaurantOption[]>([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
+  const [shiftPreset, setShiftPreset] = useState<ShiftPreset>("all_day");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ToteatDashboardResponse | null>(null);
+
+  const hourRangeByPreset: Record<ShiftPreset, { from: string; to: string }> = {
+    all_day: { from: "", to: "" },
+    morning_shift: { from: "8", to: "11" },
+    afternoon_shift: { from: "12", to: "15" },
+    night_shift: { from: "16", to: "7" },
+  };
+  const shiftLabelByPreset: Record<ShiftPreset, string> = {
+    all_day: "Todos los turnos",
+    morning_shift: "Mañana (08:00–11:59)",
+    afternoon_shift: "Tarde (12:00–15:59)",
+    night_shift: "Noche (16:00–07:59)",
+  };
 
   useEffect(() => {
     fetch("/api/toteat/restaurants")
@@ -93,6 +125,9 @@ export default function ToteatDashboardPage() {
         end_date: endDate,
         restaurant: selectedRestaurant,
       });
+      const range = hourRangeByPreset[shiftPreset];
+      if (range.from !== "") params.set("hour_from", range.from);
+      if (range.to !== "") params.set("hour_to", range.to);
       const res = await fetch(`/api/toteat/dashboard?${params.toString()}`);
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const json = (await res.json()) as ToteatDashboardResponse;
@@ -103,7 +138,7 @@ export default function ToteatDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, selectedRestaurant]);
+  }, [startDate, endDate, selectedRestaurant, shiftPreset]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -188,6 +223,21 @@ export default function ToteatDashboardPage() {
             </select>
           </>
         )}
+        <span className="text-[10px] font-bold uppercase tracking-widest ml-2 flex items-center gap-1" style={{ color: "var(--foreground-subtle)" }}>
+          <Clock className="h-3 w-3" />
+          Turno:
+        </span>
+        <select
+          value={shiftPreset}
+          onChange={(e) => setShiftPreset(e.target.value as ShiftPreset)}
+          className="text-xs rounded-lg px-2 py-1.5"
+          style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", color: "var(--foreground)" }}
+        >
+          <option value="all_day">Todo el día</option>
+          <option value="morning_shift">Mañana (08:00–11:59)</option>
+          <option value="afternoon_shift">Tarde (12:00–15:59)</option>
+          <option value="night_shift">Noche (16:00–07:59)</option>
+        </select>
       </div>
 
       {loading && (
@@ -214,11 +264,29 @@ export default function ToteatDashboardPage() {
           {data.restaurant?.name && (
             <div className="text-xs font-semibold" style={{ color: "var(--foreground-muted)" }}>
               Restaurante seleccionado: {data.restaurant.name}
+              {(data.applied_filters?.hour_from != null || data.applied_filters?.hour_to != null) && (
+                <span>
+                  {" "}· Turno aplicado ({data.applied_filters.timezone || "America/Lima"}):{" "}
+                  {data.applied_filters.hour_from != null
+                    ? `${String(data.applied_filters.hour_from).padStart(2, "0")}:00`
+                    : "00:00"}
+                  {" → "}
+                  {data.applied_filters.hour_to != null
+                    ? `${String(data.applied_filters.hour_to).padStart(2, "0")}:59`
+                    : "23:59"}
+                  {data.applied_filters.hour_from != null &&
+                    data.applied_filters.hour_to != null &&
+                    data.applied_filters.hour_from > data.applied_filters.hour_to && (
+                      <span> (cruza día)</span>
+                    )}
+                </span>
+              )}
+              <span> · {shiftLabelByPreset[shiftPreset]}</span>
             </div>
           )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="rounded-xl p-4" style={{ background: "rgba(56,209,73,0.07)", border: "1px solid rgba(56,209,73,0.20)" }}>
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Ventas</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Venta Bruta</p>
               <p className="text-xl font-bold tabular-nums">{formatSoles(data.total_sales)}</p>
             </div>
             <div className="rounded-xl p-4" style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.20)" }}>
@@ -232,6 +300,24 @@ export default function ToteatDashboardPage() {
             <div className="rounded-xl p-4" style={{ background: "rgba(255,159,67,0.07)", border: "1px solid rgba(255,159,67,0.20)" }}>
               <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Propinas</p>
               <p className="text-xl font-bold tabular-nums">{formatSoles(data.total_gratuity)}</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-xl p-4" style={{ background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.20)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Bruta - Descuentos</p>
+              <p className="text-xl font-bold tabular-nums">{formatSoles(data.total_sales_after_discounts)}</p>
+            </div>
+            <div className="rounded-xl p-4" style={{ background: "rgba(250,204,21,0.07)", border: "1px solid rgba(250,204,21,0.20)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Impuestos</p>
+              <p className="text-xl font-bold tabular-nums">{formatSoles(data.total_taxes)}</p>
+            </div>
+            <div className="rounded-xl p-4" style={{ background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.20)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Venta Neta</p>
+              <p className="text-xl font-bold tabular-nums">{formatSoles(data.total_net_sales)}</p>
+            </div>
+            <div className="rounded-xl p-4" style={{ background: "rgba(214,84,84,0.07)", border: "1px solid rgba(214,84,84,0.20)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Descuentos</p>
+              <p className="text-xl font-bold tabular-nums">{formatSoles(data.total_discounts)}</p>
             </div>
           </div>
 
@@ -312,7 +398,9 @@ export default function ToteatDashboardPage() {
             </div>
           </div>
 
-          {data.cancellations && (
+          {data.business_split && <BusinessSplitPanel data={data.business_split} />}
+
+          {/* {data.cancellations && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="rounded-xl p-4" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
                 <h3 className="text-sm font-semibold mb-3">Cancelaciones por estado</h3>
@@ -364,7 +452,7 @@ export default function ToteatDashboardPage() {
                 </p>
               )}
             </div>
-          )}
+          )} */}
         </>
       )}
     </div>

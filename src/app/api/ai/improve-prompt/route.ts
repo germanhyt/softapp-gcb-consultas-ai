@@ -4,7 +4,7 @@ import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
 
 export const maxDuration = 30;
 
-const META_PROMPT = `Eres un experto en mejorar consultas para un asistente de inteligencia de negocios de un restaurante llamado "El Refugio".
+const META_PROMPT = `Eres un experto en mejorar consultas para un asistente de inteligencia de negocios de Refugio Gastronómico.
 
 El asistente tiene acceso a datos de:
 - Conciliación de tarjetas (vouchers, procesadores de pago, Niubiz, Amex, Diners)

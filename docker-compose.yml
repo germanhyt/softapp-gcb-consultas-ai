@@ -1,4 +1,17 @@
 services:
+  consultas-refugio-pg:
+    image: postgres:16-alpine
+    container_name: consultas-refugio-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: refugio
+      POSTGRES_PASSWORD: RefugioConsultasPg2026
+      POSTGRES_DB: consultas_refugio
+    volumes:
+      - consultas_pgdata:/var/lib/postgresql/data
+    networks:
+      - app_shared_network
+
   consultas-refugio-v2:
     build: .
     container_name: consultas-refugio-v2
@@ -13,9 +26,14 @@ services:
       - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - consultas-refugio-pg
     networks:
       - app_shared_network
 
 networks:
   app_shared_network:
     external: true
+
+volumes:
+  consultas_pgdata:

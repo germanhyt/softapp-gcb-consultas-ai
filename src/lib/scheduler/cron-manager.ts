@@ -4,6 +4,7 @@ import { sendReportEmail } from "./email-sender";
 import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
 import type { ScheduledTask, VentasReportPeriodPreset } from "./types";
 import { appendVentasPeriodToQuery } from "./ventas-report-period";
+import { generateToteatScheduledReport } from "@/lib/toteat/report-generator";
 import {
   readSchedulerTasksFromDisk,
   writeSchedulerTasksToDisk,
@@ -67,20 +68,88 @@ const DEFAULT_TASKS: ScheduledTask[] = [
     ventasReportPeriod: "yesterday",
     active: false,
   },
+  {
+    id: "daily-toteat",
+    name: "Reporte Diario Toteat",
+    description: "Ventas Toteat con cruce Refugio/Sisa/Limanesas (periodo configurable)",
+    cronExpression: "0 8 * * *",
+    query: "Reporte automático Toteat (no usa IA).",
+    module: "toteat",
+    recipients: [],
+    modelId: DEFAULT_MODEL_ID,
+    ventasReportPeriod: "yesterday",
+    active: false,
+  },
 ];
 
 function persistTasks(): void {
   writeSchedulerTasksToDisk(tasks);
 }
 
+function mergeMissingDefaultTasks(existing: ScheduledTask[]): ScheduledTask[] {
+  const ids = new Set(existing.map((t) => t.id));
+  const merged = [...existing];
+  for (const def of DEFAULT_TASKS) {
+    if (!ids.has(def.id)) merged.push({ ...def });
+  }
+  return merged;
+}
+
 function loadOrSeedTasks(): void {
   const fromDisk = readSchedulerTasksFromDisk();
   if (fromDisk !== null && fromDisk.length > 0) {
-    tasks = fromDisk;
+    const merged = mergeMissingDefaultTasks(fromDisk);
+    tasks = merged;
+    if (merged.length !== fromDisk.length) persistTasks();
   } else {
     tasks = [...DEFAULT_TASKS];
     persistTasks();
   }
+}
+
+async function runTaskReport(
+  task: ScheduledTask,
+  overrides?: {
+    ventasReportPeriod?: VentasReportPeriodPreset;
+    toteatRestaurantId?: string;
+    toteatHourFrom?: number | null;
+    toteatHourTo?: number | null;
+  },
+): Promise<{ content: string; csv?: string; csvFilename?: string }> {
+  if (task.module === "toteat") {
+    const period =
+      overrides?.ventasReportPeriod !== undefined
+        ? overrides.ventasReportPeriod
+        : task.ventasReportPeriod;
+    const restaurantId =
+      overrides?.toteatRestaurantId !== undefined
+        ? overrides.toteatRestaurantId
+        : task.toteatRestaurantId;
+    const hourFrom =
+      overrides?.toteatHourFrom !== undefined ? overrides.toteatHourFrom : task.toteatHourFrom;
+    const hourTo =
+      overrides?.toteatHourTo !== undefined ? overrides.toteatHourTo : task.toteatHourTo;
+
+    const report = await generateToteatScheduledReport({
+      period,
+      restaurantId,
+      hourFrom: hourFrom ?? null,
+      hourTo: hourTo ?? null,
+    });
+    return {
+      content: report.content,
+      csv: report.csv,
+      csvFilename: report.csvFilename,
+    };
+  }
+
+  const period =
+    overrides?.ventasReportPeriod !== undefined
+      ? overrides.ventasReportPeriod
+      : task.ventasReportPeriod;
+  const prompt = appendVentasPeriodToQuery(task.module, period, task.query);
+  const report = await generateReport(prompt, task.modelId);
+  return { content: report.content };
 }
 
 function scheduleJob(task: ScheduledTask) {
@@ -104,19 +173,18 @@ function scheduleJob(task: ScheduledTask) {
     console.log(`[CronManager] Executing: ${current.name}`);
 
     try {
-      const prompt = appendVentasPeriodToQuery(
-        current.module,
-        current.ventasReportPeriod,
-        current.query,
-      );
-      const report = await generateReport(prompt, current.modelId);
+      const report = await runTaskReport(current);
 
       await sendReportEmail({
         to: current.recipients,
         subject: current.name,
         htmlContent: report.content,
         taskName: current.name,
-        model: current.modelId,
+        model: current.module === "toteat" ? "Toteat API" : current.modelId,
+        attachments:
+          report.csv && report.csvFilename
+            ? [{ filename: report.csvFilename, content: report.csv }]
+            : undefined,
       });
 
       const idx = tasks.findIndex((t) => t.id === task.id);
@@ -207,8 +275,14 @@ export interface ExecuteTaskOptions {
   recipients?: string[];
   /** Si es true, no se envía correo aunque haya destinatarios. */
   skipEmail?: boolean;
-  /** Solo ventas: periodo de datos para esta ejecución (si no se envía, se usa el guardado en la tarea). */
+  /** Solo ventas/toteat: periodo de datos para esta ejecución (si no se envía, se usa el guardado en la tarea). */
   ventasReportPeriod?: VentasReportPeriodPreset;
+  /** Solo toteat: restaurante para esta ejecución. */
+  toteatRestaurantId?: string;
+  /** Solo toteat: hora inicio filtro (0-23, Lima). */
+  toteatHourFrom?: number | null;
+  /** Solo toteat: hora fin filtro (0-23, Lima). */
+  toteatHourTo?: number | null;
 }
 
 export interface ExecuteTaskResult {
@@ -228,8 +302,12 @@ export async function executeTaskNow(
     options?.ventasReportPeriod !== undefined
       ? options.ventasReportPeriod
       : task.ventasReportPeriod;
-  const prompt = appendVentasPeriodToQuery(task.module, period, task.query);
-  const report = await generateReport(prompt, task.modelId);
+  const report = await runTaskReport(task, {
+    ventasReportPeriod: period,
+    toteatRestaurantId: options?.toteatRestaurantId,
+    toteatHourFrom: options?.toteatHourFrom,
+    toteatHourTo: options?.toteatHourTo,
+  });
 
   const rawRecipients =
     options?.recipients !== undefined
@@ -246,7 +324,11 @@ export async function executeTaskNow(
       subject: `[Manual] ${task.name}`,
       htmlContent: report.content,
       taskName: task.name,
-      model: task.modelId,
+      model: task.module === "toteat" ? "Toteat API" : task.modelId,
+      attachments:
+        report.csv && report.csvFilename
+          ? [{ filename: report.csvFilename, content: report.csv }]
+          : undefined,
     });
   }
 

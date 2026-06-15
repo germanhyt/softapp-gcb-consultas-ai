@@ -75,3 +75,32 @@ El sistema cuenta con un generador de SQL por IA (`src/lib/ai/sql-generator.ts`)
 
 ## 5. Despliegue y Contenedorización
 El proyecto está preparado para producción usando Docker. Usa un `Dockerfile` multi-stage basado en `node:20-alpine` y Docker Compose para orquestación. Next.js está configurado para output `standalone`, optimizando el tamaño final de la imagen.
+
+## 6. Autenticación y usuarios (PostgreSQL)
+
+Cuando `DATABASE_URL` está definido, la app exige login con sesión JWT (cookie httpOnly, 7 días).
+
+| Variable | Descripción |
+| --- | --- |
+| `DATABASE_URL` | Conexión PostgreSQL |
+| `AUTH_SECRET` | Clave para firmar sesiones (obligatorio con auth) |
+| `AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD` | Seed del primer admin si la tabla está vacía |
+
+**Roles:** `admin` (gestión completa + usuarios), `analyst` (operación sin gestión de usuarios), `viewer` (solo lectura en dashboards).
+
+Sin `DATABASE_URL`, la app sigue funcionando en modo desarrollo sin login.
+
+Servicio Postgres local opcional: `docker compose up postgres -d` (puerto 5433).
+
+- el cruce interno son ( Bar Refugio / Sisa / Limanesas)
+- ahora filtro por hora también 
+- mejora visual del cruce interno (para que se pueda enteder mejor)
+- en config una sección para poder enviar estos reportes de toteat a determinados correos de forma automática con horario programado
+- Realizamos el módulo de gestión de usuarios en el proyecto, usa postgres ya que es el db que más uso en mi ecosistema
+
+
+genial ahora procedemos a desplegar, con acceso ssh de vps_estacionameinto que ya tienes, vmaos a desplegarl el proyecto
+- además liberamos el proyectons consultas.gcbprojects.site del proyecto que esta y o apuntamos a este 
+- procedemos paso a paso
+
+

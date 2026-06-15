@@ -44,6 +44,7 @@ function normalizeTask(raw: unknown): ScheduledTask | null {
 
   const PRESETS = new Set([
     "yesterday",
+    "yesterday_to_today",
     "last_7_days",
     "last_30_days",
     "last_complete_week",
@@ -53,6 +54,23 @@ function normalizeTask(raw: unknown): ScheduledTask | null {
   let ventasReportPeriod: ScheduledTask["ventasReportPeriod"] = undefined;
   if (typeof o.ventasReportPeriod === "string" && PRESETS.has(o.ventasReportPeriod)) {
     ventasReportPeriod = o.ventasReportPeriod as ScheduledTask["ventasReportPeriod"];
+  }
+
+  const toteatRestaurantId =
+    typeof o.toteatRestaurantId === "string" && o.toteatRestaurantId.trim()
+      ? o.toteatRestaurantId.trim()
+      : undefined;
+
+  let toteatHourFrom: number | null | undefined = undefined;
+  if (o.toteatHourFrom === null) toteatHourFrom = null;
+  else if (typeof o.toteatHourFrom === "number" && o.toteatHourFrom >= 0 && o.toteatHourFrom <= 23) {
+    toteatHourFrom = Math.floor(o.toteatHourFrom);
+  }
+
+  let toteatHourTo: number | null | undefined = undefined;
+  if (o.toteatHourTo === null) toteatHourTo = null;
+  else if (typeof o.toteatHourTo === "number" && o.toteatHourTo >= 0 && o.toteatHourTo <= 23) {
+    toteatHourTo = Math.floor(o.toteatHourTo);
   }
 
   if (!id || !name) return null;
@@ -67,6 +85,9 @@ function normalizeTask(raw: unknown): ScheduledTask | null {
     modelId,
     active,
     ventasReportPeriod,
+    toteatRestaurantId,
+    toteatHourFrom,
+    toteatHourTo,
     lastRun,
     lastResult,
     lastStatus,
