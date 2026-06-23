@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScheduledReportTasksSettings } from "@/components/settings/scheduled-report-tasks";
+import { ToteatWebhookSettings } from "@/components/settings/toteat-webhook-settings";
 import { UsersManagementSettings } from "@/components/settings/users-management";
 
 interface ProviderDisplay {
@@ -637,6 +638,8 @@ export default function SettingsPage() {
           )}
         </div>
       </section>
+
+      <ToteatWebhookSettings />
 
       <ScheduledReportTasksSettings />
 

@@ -46,7 +46,6 @@ export const PROVIDER_ENV_MAP: Record<ProviderKey, string> = {
 };
 
 export const MODEL_PROVIDER_MAP: Record<string, ProviderKey> = {
-  "gemini-2.0-flash": "google",
   "gemini-2.5-flash": "google",
   "gemini-2.5-pro": "google",
   "gemini-3-flash-preview": "google",
@@ -66,7 +65,6 @@ const DEFAULT_CONFIG: AIConfig = {
     deepseek: { apiKey: "" },
   },
   models: {
-    "gemini-2.0-flash": true,
     "gemini-2.5-flash": true,
     "gemini-2.5-pro": true,
     "gemini-3-flash-preview": true,

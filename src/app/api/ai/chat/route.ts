@@ -6,8 +6,15 @@ import {
 } from "ai";
 import { getModel } from "@/lib/ai/providers";
 import { buildContext } from "@/lib/ai/context-builder";
-import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import { DEFAULT_MODEL_ID, resolveModelId } from "@/lib/ai/models";
 import { textFromUIMessageParts } from "@/lib/ai/ui-message-text";
+import { COMPANY_NAME } from "@/lib/config/brand";
+
+const LEGACY_BRAND_RE = /\bEl Refugio\b/gi;
+
+function normalizeBrandInText(text: string): string {
+  return text.replace(LEGACY_BRAND_RE, COMPANY_NAME);
+}
 
 export const maxDuration = 120;
 
@@ -22,7 +29,9 @@ function sanitizeUIMessagesForModel(messages: UIMessage[]): UIMessage[] {
       if (p.type === "text") {
         return {
           ...p,
-          text: p.text.replace(/\[DATOS DEL SISTEMA[^\]]*\]\s*/g, ""),
+          text: normalizeBrandInText(
+            p.text.replace(/\[DATOS DEL SISTEMA[^\]]*\]\s*/g, ""),
+          ),
         };
       }
       return p;
@@ -36,6 +45,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const messages = body.messages as UIMessage[] | undefined;
     const modelId = body.modelId as string | undefined;
+    const chatMode = body.chatMode === "toteat" ? "toteat" : "auto";
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "No messages provided" }), {
@@ -48,12 +58,17 @@ export async function POST(req: Request) {
     const lastUserMessage = lastUserUIMessage
       ? textFromUIMessageParts(lastUserUIMessage.parts)
       : "";
+    const priorUserMessages = messages
+      .filter((m) => m.role === "user")
+      .slice(0, -1)
+      .map((m) => textFromUIMessageParts(m.parts))
+      .filter(Boolean);
 
     // Detect module & fetch relevant data
     let data = "";
     let systemPrompt = "";
     try {
-      const ctx = await buildContext(lastUserMessage);
+      const ctx = await buildContext(lastUserMessage, { chatMode, priorUserMessages });
       data = ctx.data;
       systemPrompt = ctx.systemPrompt;
     } catch (ctxErr) {
@@ -81,7 +96,9 @@ export async function POST(req: Request) {
       .join("\n");
 
     // Stream response with selected model
-    const selectedModel = modelId || process.env.DEFAULT_MODEL_ID || DEFAULT_MODEL_ID;
+    const selectedModel = resolveModelId(
+      modelId || process.env.DEFAULT_MODEL_ID || DEFAULT_MODEL_ID,
+    );
 
     const forModel = sanitizeUIMessagesForModel(messages);
     let modelMessages;
@@ -96,7 +113,7 @@ export async function POST(req: Request) {
     }
 
     console.log(
-      `[AI Chat] model=${selectedModel} systemLen=${fullSystem.length} msgCount=${messages.length} sent=${forModel.length}`,
+      `[AI Chat] model=${selectedModel} mode=${chatMode} systemLen=${fullSystem.length} msgCount=${messages.length} sent=${forModel.length}`,
     );
 
     const result = streamText({

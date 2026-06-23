@@ -15,14 +15,6 @@ export interface AIProviderInfo {
 }
 
 export const AI_PROVIDERS: Record<string, AIProviderInfo> = {
-  "gemini-2.0-flash": {
-    id: "gemini-2.0-flash",
-    name: "Gemini 2.0 Flash",
-    provider: "Google",
-    providerKey: "google",
-    icon: "G",
-    maxTokens: 32768,
-  },
   "gemini-2.5-flash": {
     id: "gemini-2.5-flash",
     name: "Gemini 2.5 Flash",
@@ -101,4 +93,14 @@ export const AI_PROVIDERS: Record<string, AIProviderInfo> = {
 export const DEFAULT_MODEL_ID = "gemini-2.5-flash";
 
 /** Google cuando `getModel` recibe un id desconocido (fallback defensivo). */
-export const FALLBACK_GOOGLE_MODEL_ID = "gemini-2.0-flash";
+export const FALLBACK_GOOGLE_MODEL_ID = "gemini-2.5-flash";
+
+/** Modelos retirados por el proveedor; se migran al default en el cliente. */
+export const DEPRECATED_MODEL_IDS = ["gemini-2.0-flash"] as const;
+
+export function resolveModelId(storedId: string | null | undefined): string {
+  if (!storedId || DEPRECATED_MODEL_IDS.includes(storedId as (typeof DEPRECATED_MODEL_IDS)[number])) {
+    return DEFAULT_MODEL_ID;
+  }
+  return AI_PROVIDERS[storedId] ? storedId : DEFAULT_MODEL_ID;
+}

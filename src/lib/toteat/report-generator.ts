@@ -2,9 +2,17 @@ import { formatSoles } from "@/lib/config/column-rules";
 import { resolveVentasDateRangeYmd, VENTAS_PERIOD_LABELS } from "@/lib/scheduler/ventas-report-period";
 import type { VentasReportPeriodPreset } from "@/lib/scheduler/types";
 import { getToteatDashboardData, type ToteatDashboardData } from "./dashboard-data";
+import {
+  getToteatSalesReportLabel,
+  getToteatSourceDescription,
+  getToteatSourceNoteShort,
+} from "./source-context";
 
 export interface ToteatReportOptions {
   period?: VentasReportPeriodPreset;
+  /** Si se indican ambas fechas, tienen prioridad sobre period. */
+  startDate?: string;
+  endDate?: string;
   restaurantId?: string | null;
   hourFrom?: number | null;
   hourTo?: number | null;
@@ -37,6 +45,40 @@ function formatHourRange(hourFrom: number | null, hourTo: number | null): string
   return `${from} – ${to} (Lima)`;
 }
 
+function buildChartsSection(data: ToteatDashboardData): string[] {
+  const lines: string[] = [];
+  if (
+    data.charts.por_turno.length === 0 &&
+    data.charts.por_dia.length === 0 &&
+    data.charts.por_hora.length === 0
+  ) {
+    return lines;
+  }
+
+  lines.push("### Ventas por turno / día / hora", "");
+  if (data.charts.por_turno.length > 0) {
+    lines.push("**Por turno:**", "| Turno | Venta | Transacciones |", "| --- | --- | --- |");
+    for (const r of data.charts.por_turno) {
+      lines.push(`| ${r.turno} | ${formatSoles(r.total)} | ${r.transacciones} |`);
+    }
+    lines.push("");
+  }
+  if (data.charts.por_dia.length > 0) {
+    lines.push("**Por día de semana:**", "| Día | Venta | Transacciones |", "| --- | --- | --- |");
+    for (const r of data.charts.por_dia) {
+      lines.push(`| ${r.dia_label} | ${formatSoles(r.total)} | ${r.transacciones} |`);
+    }
+    lines.push("");
+  }
+  if (data.charts.por_hora.length > 0) {
+    lines.push("**Por hora:**", "| Hora | Venta | Transacciones |", "| --- | --- | --- |");
+    for (const r of data.charts.por_hora.slice(0, 24)) {
+      lines.push(`| ${r.hora_label} | ${formatSoles(r.total)} | ${r.transacciones} |`);
+    }
+  }
+  return lines;
+}
+
 function buildMarkdownReport(data: ToteatDashboardData, periodLabel: string): string {
   const hourRange = formatHourRange(
     data.applied_filters.hour_from,
@@ -44,8 +86,11 @@ function buildMarkdownReport(data: ToteatDashboardData, periodLabel: string): st
   );
 
   const lines: string[] = [
-    `## Reporte Toteat — ${data.restaurant.name}`,
+    `## ${getToteatSalesReportLabel()} — Toteat`,
     "",
+    getToteatSourceDescription(),
+    "",
+    `**Restaurante API:** ${data.restaurant.name}`,
     `**Periodo:** ${data.start_date} → ${data.end_date} (${periodLabel})`,
     `**Turno aplicado:** ${hourRange}`,
     "",
@@ -62,19 +107,25 @@ function buildMarkdownReport(data: ToteatDashboardData, periodLabel: string): st
     `| Propinas | ${formatSoles(data.total_gratuity)} |`,
     `| Pedidos | ${data.orders_count} |`,
     `| Pagos / cierres | ${data.payments_count} |`,
+    `| Comensales | ${data.clients_count || "—"} |`,
+    `| Ticket promedio (bruto) | ${formatSoles(data.average_ticket_gross)} |`,
+    `| Ticket promedio (neto) | ${formatSoles(data.average_ticket_net)} |`,
+    data.clients_count > 0
+      ? `| Ticket promedio (comensal) | ${formatSoles(data.average_ticket_per_client)} |`
+      : "",
     "",
     "### Cruce interno (Refugio / Sisa / Limanesas)",
     "",
-    "| Negocio | Monto | % | Pedidos | Líneas |",
-    "| --- | --- | --- | --- | --- |",
-  ];
+    "| Negocio | Monto | % | Pedidos | Ticket prom. | Líneas |",
+    "| --- | --- | --- | --- | --- | --- |",
+  ].filter(Boolean);
 
   for (const b of data.business_split.by_business) {
     lines.push(
-      `| ${b.business} | ${formatSoles(b.total)} | ${b.percentage}% | ${b.orders} | ${b.line_items} |`,
+      `| ${b.business} | ${formatSoles(b.total)} | ${b.percentage}% | ${b.orders} | ${formatSoles(b.average_ticket)} | ${b.line_items} |`,
     );
   }
-  lines.push(`| **Total** | **${formatSoles(data.business_split.total)}** | 100% | — | — |`);
+  lines.push(`| **Total** | **${formatSoles(data.business_split.total)}** | 100% | — | — | — |`);
 
   if (data.top_waiters.length > 0) {
     lines.push("", "### Top meseros", "", "| Mesero | Ventas | Pedidos |", "| --- | --- | --- |");
@@ -95,6 +146,11 @@ function buildMarkdownReport(data: ToteatDashboardData, periodLabel: string): st
     for (const p of data.top_products.slice(0, 10)) {
       lines.push(`| ${p.name} | ${p.quantity} | ${formatSoles(p.revenue)} |`);
     }
+  }
+
+  const chartLines = buildChartsSection(data);
+  if (chartLines.length > 0) {
+    lines.push("", ...chartLines);
   }
 
   lines.push(
@@ -132,6 +188,8 @@ function buildCsvReport(data: ToteatDashboardData, periodLabel: string): string 
   const push = (...cols: (string | number)[]) => rows.push(cols.map(csvEscape).join(","));
 
   push("seccion", "campo", "valor");
+  push("meta", "reporte_ventas", getToteatSalesReportLabel());
+  push("meta", "fuente", getToteatSourceNoteShort());
   push("meta", "restaurante", data.restaurant.name);
   push("meta", "periodo", `${data.start_date}..${data.end_date}`);
   push("meta", "periodo_preset", periodLabel);
@@ -149,11 +207,15 @@ function buildCsvReport(data: ToteatDashboardData, periodLabel: string): string 
   push("resumen", "total_gratuity", data.total_gratuity);
   push("resumen", "orders_count", data.orders_count);
   push("resumen", "payments_count", data.payments_count);
+  push("resumen", "clients_count", data.clients_count);
+  push("resumen", "average_ticket_gross", data.average_ticket_gross);
+  push("resumen", "average_ticket_net", data.average_ticket_net);
+  push("resumen", "average_ticket_per_client", data.average_ticket_per_client);
 
   push("");
-  push("cruce_interno", "negocio", "total", "porcentaje", "pedidos", "lineas");
+  push("cruce_interno", "negocio", "total", "porcentaje", "pedidos", "ticket_promedio", "lineas");
   for (const b of data.business_split.by_business) {
-    push("cruce_interno", b.business, b.total, b.percentage, b.orders, b.line_items);
+    push("cruce_interno", b.business, b.total, b.percentage, b.orders, b.average_ticket, b.line_items);
   }
 
   push("");
@@ -186,15 +248,42 @@ function buildCsvReport(data: ToteatDashboardData, periodLabel: string): string 
   );
   push("cancelaciones", "canceled_payments_amount", data.cancellations.canceled_payments_amount);
 
+  if (data.charts.por_turno.length > 0) {
+    push("");
+    push("ventas_por_turno", "turno", "venta", "transacciones");
+    for (const r of data.charts.por_turno) {
+      push("ventas_por_turno", r.turno, r.total, r.transacciones);
+    }
+  }
+  if (data.charts.por_dia.length > 0) {
+    push("");
+    push("ventas_por_dia", "dia", "venta", "transacciones");
+    for (const r of data.charts.por_dia) {
+      push("ventas_por_dia", r.dia_label, r.total, r.transacciones);
+    }
+  }
+
   return rows.join("\n");
 }
 
 export async function generateToteatScheduledReport(
   options: ToteatReportOptions,
 ): Promise<ToteatReportResult> {
-  const period = options.period ?? "yesterday";
-  const { start, end, label } = resolveVentasDateRangeYmd(period, options.referenceDate);
-  const periodLabel = VENTAS_PERIOD_LABELS[period] ?? label;
+  let start: string;
+  let end: string;
+  let periodLabel: string;
+
+  if (options.startDate && options.endDate) {
+    start = options.startDate;
+    end = options.endDate;
+    periodLabel = `${start} → ${end}`;
+  } else {
+    const period = options.period ?? "yesterday";
+    const resolved = resolveVentasDateRangeYmd(period, options.referenceDate);
+    start = resolved.start;
+    end = resolved.end;
+    periodLabel = VENTAS_PERIOD_LABELS[period] ?? resolved.label;
+  }
 
   const data = await getToteatDashboardData({
     startDate: start,

@@ -88,7 +88,7 @@ function parseSingleFromEnv(): ToteatRestaurantConfig[] {
   const xapitoken = (process.env.TOTEAT_XAPITOKEN || "").trim();
   const timeoutCandidate = Number(process.env.TOTEAT_TIMEOUT_MS || 20000);
   const timeoutMs = Number.isFinite(timeoutCandidate) && timeoutCandidate > 0 ? timeoutCandidate : 20000;
-  const name = (process.env.TOTEAT_RESTAURANT_NAME || "Restaurante principal").trim();
+  const name = (process.env.TOTEAT_RESTAURANT_NAME || "Bar Refugio").trim();
   const id = toSafeId(process.env.TOTEAT_RESTAURANT_ID || "default") || "default";
 
   if (!xir || !xil || !xiu || !xapitoken) return [];

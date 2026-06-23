@@ -5,6 +5,7 @@ import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
 import type { ScheduledTask, VentasReportPeriodPreset } from "./types";
 import { appendVentasPeriodToQuery } from "./ventas-report-period";
 import { generateToteatScheduledReport } from "@/lib/toteat/report-generator";
+import { getToteatSourceNoteShort } from "@/lib/toteat/source-context";
 import {
   readSchedulerTasksFromDisk,
   writeSchedulerTasksToDisk,
@@ -70,10 +71,11 @@ const DEFAULT_TASKS: ScheduledTask[] = [
   },
   {
     id: "daily-toteat",
-    name: "Reporte Diario Toteat",
-    description: "Ventas Toteat con cruce Refugio/Sisa/Limanesas (periodo configurable)",
+    name: "Reporte Diario Toteat — Bar Refugio",
+    description:
+      "Reporte de ventas Bar Refugio desde Toteat, con cruce Refugio/Sisa/Limanesas (periodo configurable)",
     cronExpression: "0 8 * * *",
-    query: "Reporte automático Toteat (no usa IA).",
+    query: "Reporte automático del reporte de ventas Bar Refugio en Toteat (no usa IA).",
     module: "toteat",
     recipients: [],
     modelId: DEFAULT_MODEL_ID,
@@ -180,7 +182,7 @@ function scheduleJob(task: ScheduledTask) {
         subject: current.name,
         htmlContent: report.content,
         taskName: current.name,
-        model: current.module === "toteat" ? "Toteat API" : current.modelId,
+        model: current.module === "toteat" ? getToteatSourceNoteShort() : current.modelId,
         attachments:
           report.csv && report.csvFilename
             ? [{ filename: report.csvFilename, content: report.csv }]
@@ -324,7 +326,7 @@ export async function executeTaskNow(
       subject: `[Manual] ${task.name}`,
       htmlContent: report.content,
       taskName: task.name,
-      model: task.module === "toteat" ? "Toteat API" : task.modelId,
+      model: task.module === "toteat" ? getToteatSourceNoteShort() : task.modelId,
       attachments:
         report.csv && report.csvFilename
           ? [{ filename: report.csvFilename, content: report.csv }]

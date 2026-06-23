@@ -5,6 +5,7 @@ import { Loader2, RefreshCw, Store, ListOrdered, CreditCard, Package, Clock } fr
 import { TrendCharts, ChartsData } from "@/components/dashboard/trend-charts";
 import { BusinessSplitPanel } from "@/components/toteat/business-split-panel";
 import { formatSoles } from "@/lib/config/column-rules";
+import { TOTEAT_SALES_REPORT_NAME } from "@/lib/toteat/source-context";
 
 interface ToteatDashboardResponse {
   restaurant?: { id: string; name: string };
@@ -20,6 +21,10 @@ interface ToteatDashboardResponse {
   total_gratuity: number;
   orders_count: number;
   payments_count: number;
+  clients_count: number;
+  average_ticket_gross: number;
+  average_ticket_net: number;
+  average_ticket_per_client: number;
   charts: ChartsData;
   top_waiters: Array<{ waiterName: string; sales: number; orders: number }>;
   payment_methods: Array<{ name: string; amount: number; count: number }>;
@@ -32,6 +37,7 @@ interface ToteatDashboardResponse {
       percentage: number;
       line_items: number;
       orders: number;
+      average_ticket: number;
     }>;
     total: number;
   };
@@ -162,7 +168,7 @@ export default function ToteatDashboardPage() {
             Consultas Toteat
           </h2>
           <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
-            Dashboard de ventas directo desde API Toteat
+            Reporte de ventas {TOTEAT_SALES_REPORT_NAME} — datos en vivo desde API Toteat
           </p>
         </div>
         <button
@@ -319,6 +325,29 @@ export default function ToteatDashboardPage() {
               <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Descuentos</p>
               <p className="text-xl font-bold tabular-nums">{formatSoles(data.total_discounts)}</p>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-xl p-4" style={{ background: "rgba(56,209,73,0.07)", border: "1px solid rgba(56,209,73,0.20)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Ticket prom. (bruto)</p>
+              <p className="text-xl font-bold tabular-nums">{formatSoles(data.average_ticket_gross)}</p>
+            </div>
+            <div className="rounded-xl p-4" style={{ background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.20)" }}>
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Ticket prom. (neto)</p>
+              <p className="text-xl font-bold tabular-nums">{formatSoles(data.average_ticket_net)}</p>
+            </div>
+            {data.clients_count > 0 && (
+              <div className="rounded-xl p-4" style={{ background: "rgba(96,165,250,0.07)", border: "1px solid rgba(96,165,250,0.20)" }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Ticket / comensal</p>
+                <p className="text-xl font-bold tabular-nums">{formatSoles(data.average_ticket_per_client)}</p>
+              </div>
+            )}
+            {data.clients_count > 0 && (
+              <div className="rounded-xl p-4" style={{ background: "rgba(148,163,184,0.07)", border: "1px solid rgba(148,163,184,0.20)" }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Comensales</p>
+                <p className="text-xl font-bold tabular-nums">{data.clients_count.toLocaleString("es-PE")}</p>
+              </div>
+            )}
           </div>
 
           {data.cancellations && (

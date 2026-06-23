@@ -12,6 +12,7 @@ export interface BusinessSplitData {
     percentage: number;
     line_items: number;
     orders: number;
+    average_ticket: number;
   }>;
   total: number;
 }
@@ -149,9 +150,9 @@ export function BusinessSplitPanel({ data }: { data: BusinessSplitData }) {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide opacity-70">Líneas</p>
+                  <p className="text-[10px] uppercase tracking-wide opacity-70">Ticket prom.</p>
                   <p className="font-semibold tabular-nums" style={{ color: "var(--foreground)" }}>
-                    {b.line_items.toLocaleString("es-PE")}
+                    {formatSoles(b.average_ticket)}
                   </p>
                 </div>
               </div>

@@ -11,8 +11,13 @@ import React, {
 } from "react";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport, generateId } from "ai";
-import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import { DEFAULT_MODEL_ID, resolveModelId } from "@/lib/ai/models";
 import { textFromUIMessageParts } from "@/lib/ai/ui-message-text";
+import {
+  CHAT_MODE_STORAGE_KEY,
+  isChatMode,
+  type ChatMode,
+} from "@/lib/ai/chat-modes";
 
 export interface ChatMessage {
   id: string;
@@ -31,6 +36,7 @@ interface ChatContextType {
   isOpen: boolean;
   isExpanded: boolean;
   selectedModel: string;
+  chatMode: ChatMode;
   sendMessage: (content: string) => void;
   clearMessages: () => void;
   regenerateLastResponse: () => void;
@@ -38,6 +44,7 @@ interface ChatContextType {
   toggleChat: () => void;
   toggleExpanded: () => void;
   setSelectedModel: (model: string) => void;
+  setChatMode: (mode: ChatMode) => void;
   stopGenerating: () => void;
 }
 
@@ -91,17 +98,26 @@ function saveMessages(messages: UIMessage[]) {
 
 function loadModel(): string {
   if (typeof window === "undefined") return DEFAULT_MODEL_ID;
-  return localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL_ID;
+  return resolveModelId(localStorage.getItem(MODEL_KEY));
+}
+
+function loadChatMode(): ChatMode {
+  if (typeof window === "undefined") return "auto";
+  const stored = localStorage.getItem(CHAT_MODE_STORAGE_KEY);
+  return isChatMode(stored) ? stored : "auto";
 }
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedModel, setSelectedModelState] = useState(DEFAULT_MODEL_ID);
+  const [chatMode, setChatModeState] = useState<ChatMode>("auto");
   const [isInitialized, setIsInitialized] = useState(false);
 
   const selectedModelRef = useRef(selectedModel);
   selectedModelRef.current = selectedModel;
+  const chatModeRef = useRef(chatMode);
+  chatModeRef.current = chatMode;
 
   const transport = useMemo(
     () =>
@@ -118,6 +134,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             ...(body && typeof body === "object" ? body : {}),
             messages: msgs,
             modelId: selectedModelRef.current,
+            chatMode: chatModeRef.current,
           },
           headers,
           credentials,
@@ -154,6 +171,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setAiMessages(stored);
     }
     setSelectedModelState(loadModel());
+    setChatModeState(loadChatMode());
     setIsInitialized(true);
   }, [setAiMessages]);
 
@@ -221,6 +239,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const setChatMode = useCallback((mode: ChatMode) => {
+    setChatModeState(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(CHAT_MODE_STORAGE_KEY, mode);
+    }
+  }, []);
+
   const stopGenerating = useCallback(() => {
     stop();
   }, [stop]);
@@ -241,6 +266,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         isOpen,
         isExpanded,
         selectedModel,
+        chatMode,
         sendMessage,
         clearMessages,
         regenerateLastResponse,
@@ -248,6 +274,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         toggleChat,
         toggleExpanded,
         setSelectedModel,
+        setChatMode,
         stopGenerating,
       }}
     >

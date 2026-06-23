@@ -1,10 +1,11 @@
 import { generateText } from "ai";
 import { getModel } from "@/lib/ai/providers";
 import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
+import { COMPANY_NAME } from "@/lib/config/brand";
 
 export const maxDuration = 30;
 
-const META_PROMPT = `Eres un experto en mejorar consultas para un asistente de inteligencia de negocios de Refugio Gastronómico.
+const META_PROMPT = `Eres un experto en mejorar consultas para un asistente de inteligencia de negocios de ${COMPANY_NAME}.
 
 El asistente tiene acceso a datos de:
 - Conciliación de tarjetas (vouchers, procesadores de pago, Niubiz, Amex, Diners)

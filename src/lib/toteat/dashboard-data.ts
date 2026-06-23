@@ -34,6 +34,7 @@ interface ToteatSaleRow {
   gratuity?: number;
   taxes?: number;
   subtotal?: number;
+  numberClients?: number;
   paymentForms?: ToteatPaymentForm[];
   products?: ToteatProduct[];
 }
@@ -68,6 +69,10 @@ export interface ToteatDashboardData {
   total_gratuity: number;
   orders_count: number;
   payments_count: number;
+  clients_count: number;
+  average_ticket_gross: number;
+  average_ticket_net: number;
+  average_ticket_per_client: number;
   charts: ChartsData;
   top_waiters: Array<{ waiterName: string; sales: number; orders: number }>;
   payment_methods: Array<{ name: string; amount: number; count: number }>;
@@ -80,6 +85,7 @@ export interface ToteatDashboardData {
       percentage: number;
       line_items: number;
       orders: number;
+      average_ticket: number;
     }>;
     total: number;
   };
@@ -113,6 +119,11 @@ function safeNum(v: unknown): number {
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function safeAverage(numerator: number, denominator: number): number {
+  if (denominator <= 0) return 0;
+  return roundMoney(numerator / denominator);
 }
 
 function normalizeText(v: string): string {
@@ -303,9 +314,18 @@ export async function getToteatDashboardData(
     const byShift = new Map<string, { total: number; transacciones: number }>();
     const methodMap = new Map<string, { amount: number; count: number }>();
     const productMap = new Map<string, { quantity: number; revenue: number }>();
+    const clientsByOrder = new Map<string, number>();
 
     for (const row of rows) {
-      if (row.orderId != null) orderIds.add(String(row.orderId));
+      if (row.orderId != null) {
+        const orderId = String(row.orderId);
+        orderIds.add(orderId);
+        const clients = safeNum(row.numberClients);
+        if (clients > 0) {
+          const prev = clientsByOrder.get(orderId) ?? 0;
+          clientsByOrder.set(orderId, Math.max(prev, clients));
+        }
+      }
       totals.totalSales += safeNum(row.total);
       totals.totalPaid += safeNum(row.payed);
       totals.totalDiscounts += safeNum(row.discounts);
@@ -441,6 +461,11 @@ export async function getToteatDashboardData(
 
     const totalSalesAfterDiscounts = totals.totalSales + totals.totalDiscounts;
     const totalNetSales = totalSalesAfterDiscounts - totals.totalTaxes;
+    const ordersCount = orderIds.size;
+    let clientsCount = 0;
+    for (const orderId of orderIds) {
+      clientsCount += clientsByOrder.get(orderId) ?? 0;
+    }
 
     return {
       restaurant: { id: cfg.id, name: cfg.name },
@@ -454,8 +479,12 @@ export async function getToteatDashboardData(
       total_paid: roundMoney(totals.totalPaid),
       total_discounts: roundMoney(totals.totalDiscounts),
       total_gratuity: roundMoney(totals.totalGratuity),
-      orders_count: orderIds.size,
+      orders_count: ordersCount,
       payments_count: rows.length,
+      clients_count: clientsCount,
+      average_ticket_gross: safeAverage(totals.totalSales, ordersCount),
+      average_ticket_net: safeAverage(totalNetSales, ordersCount),
+      average_ticket_per_client: safeAverage(totals.totalSales, clientsCount),
       charts: {
         por_turno: Array.from(byShift.entries())
           .map(([turno, v]) => ({
@@ -522,6 +551,7 @@ export async function getToteatDashboardData(
               : 0,
           line_items: businessLines[business],
           orders: businessOrders[business].size,
+          average_ticket: safeAverage(businessTotals[business], businessOrders[business].size),
         })),
         total: Math.round(businessSplitTotal * 100) / 100,
       },

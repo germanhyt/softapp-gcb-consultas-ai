@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useGlobalChat } from "@/contexts/chat-context";
-import { AI_PROVIDERS, type AIProviderInfo, type ProviderKey } from "@/lib/ai/models";
+import { AI_PROVIDERS, resolveModelId, type AIProviderInfo, type ProviderKey } from "@/lib/ai/models";
 
 interface ModelsConfig {
   models: Record<string, boolean>;
@@ -22,6 +22,13 @@ export function ModelSelector() {
     Object.values(AI_PROVIDERS)
   );
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const resolved = resolveModelId(selectedModel);
+    if (resolved !== selectedModel) {
+      setSelectedModel(resolved);
+    }
+  }, [selectedModel, setSelectedModel]);
 
   useEffect(() => {
     fetch("/api/settings/ai")

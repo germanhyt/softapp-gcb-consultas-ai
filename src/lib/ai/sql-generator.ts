@@ -26,8 +26,10 @@ const MODULE_HINTS: Record<BQModule, string> = {
 - Turno puede ser 'Mañana' o 'Noche'. Cuando el usuario diga "turno mañana" o "turno noche" filtra por esta columna.
 - Monto es la columna de importe. Cantidad es unidades vendidas.
 - No existe una sola columna "medio de pago"; para desglose por canal/medio usa CASE sobre Cliente y Producto (Rappi, PedidosYa, UberEats, Fidelio, Pago Link, Eventos, Salón presencial, etc.), coherente con análisis de canales de venta.
-- Para ventas por negocio: agrupar por CodigoNegocio y hacer JOIN con Negocios.Descripcion.
+- Para presupuesto vs real: JOIN \`${BQ_PROJECT}.Ventas.Presupuesto\` por CodigoNegocio y mes.
+- Metas globales: \`${BQ_PROJECT}.Ventas.MontosMeta\`. Pronósticos: \`${BQ_PROJECT}.Ventas.Pronostico\`, \`${BQ_PROJECT}.Ventas.Predicciones\`.
 - IMPORTANTE: Cuando el usuario mencione "bar", "el bar", "del bar" se refiere al negocio "BAR REFUGIO". SIEMPRE filtra con: UPPER(COALESCE(n.Descripcion, '')) LIKE '%BAR%'
+- Para ventas por negocio: agrupar por CodigoNegocio y hacer JOIN con Negocios.Descripcion.
 - Si el usuario pide ventas de un negocio específico, SIEMPRE haz JOIN con Negocios y filtra por Descripcion.
 - EJEMPLO completo de consulta por rango horario y negocio:
   SELECT
@@ -41,10 +43,13 @@ const MODULE_HINTS: Record<BQModule, string> = {
   LIMIT 200
 `,
   estacionamiento: `
-- Tabla principal: \`${BQ_PROJECT}.Estacionamiento.Registro\`
+- Tabla principal de movimientos: \`${BQ_PROJECT}.Estacionamiento.Registro\`
 - tipo_camara = 'entrada' para entradas, 'salida' para salidas.
-- Para contar vehículos únicos en un período: COUNT(DISTINCT placa).
-- Para calcular tiempo de permanencia: JOIN entrada con salida por placa y fecha.
+- JOIN con Lugares por codigo_lugar para nombre de zona.
+- Vehículos únicos: \`${BQ_PROJECT}.Estacionamiento.Vehiculos\`
+- Tarifas: \`${BQ_PROJECT}.Estacionamiento.Tarifas_horarias\`, \`${BQ_PROJECT}.Estacionamiento.Tarifas_excepcionales\`
+- Visitantes/proveedores: \`${BQ_PROJECT}.Estacionamiento.Visitantes_proveedores\`
+- Para contar vehículos únicos en un período: COUNT(DISTINCT placa) en Registro.
 - Fecha es tipo DATE, hora es tipo TIME.
 `,
   flujo: `

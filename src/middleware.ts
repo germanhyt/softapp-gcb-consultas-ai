@@ -13,6 +13,7 @@ const PUBLIC_PATHS = ["/login"];
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;
   if (pathname.startsWith("/api/auth/login")) return true;
+  if (pathname.startsWith("/api/webhooks/toteat")) return true;
   if (pathname.startsWith("/_next")) return true;
   if (pathname === "/favicon.ico" || pathname.startsWith("/logo")) return true;
   return false;

@@ -326,8 +326,9 @@ export function ScheduledReportTasksSettings() {
       <p className="text-xs text-muted-foreground mb-4">
         Define expresión cron (cuándo se envía), destinatarios y activa el envío automático. En tareas
         de <strong>ventas</strong> o <strong>toteat</strong> puedes elegir el <strong>periodo de datos</strong>{" "}
-        (qué fechas se analizan; zona Lima). Las tareas <strong>toteat</strong> incluyen cruce interno y
-        adjuntan un CSV. Puedes ejecutar en el momento con o sin correo; si rellenas destinatarios aquí,
+        (qué fechas se analizan; zona Lima). Las tareas <strong>toteat</strong> envían el{" "}
+        <strong>reporte de ventas Bar Refugio</strong> desde Toteat (cruce interno, ticket promedio y CSV
+        adjunto). Puedes ejecutar en el momento con o sin correo; si rellenas destinatarios aquí,
         se usan aunque no hayas pulsado Guardar.
       </p>
 

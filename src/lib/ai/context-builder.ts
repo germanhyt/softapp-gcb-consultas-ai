@@ -3,11 +3,21 @@ import { executeBigQuery, formatQueryResult } from "@/lib/data/bigquery-client";
 import { generateSQL } from "./sql-generator";
 import { getSystemPrompt, type ModuleType } from "./system-prompts";
 import { buildVentasScheduledReportSql } from "@/lib/data/ventas-scheduled-report-sql";
+import type { ChatMode } from "./chat-modes";
+import { getToteatDashboardData } from "@/lib/toteat/dashboard-data";
+import { formatToteatComparisonForAI, formatToteatForAI } from "@/lib/toteat/ai-formatter";
+import { parseToteatQueryParams } from "@/lib/toteat/query-parser";
 
 interface ContextResult {
   module: ModuleType;
   data: string;
   systemPrompt: string;
+}
+
+export interface BuildContextOptions {
+  chatMode?: ChatMode;
+  /** Mensajes previos del usuario (orden cronológico) para resolver fechas/turnos en follow-ups. */
+  priorUserMessages?: string[];
 }
 
 // Keyword patterns for module detection
@@ -78,6 +88,7 @@ const MODULE_KEYWORDS: Record<ModuleType, RegExp[]> = {
     /conteo/i,
     /sensor/i,
   ],
+  toteat: [],
   general: [],
 };
 
@@ -703,7 +714,57 @@ async function fetchBigQueryData(
   return `[ERROR_TECNICO] Error al consultar BigQuery después de 2 intentos: ${lastError}`;
 }
 
-export async function buildContext(userMessage: string): Promise<ContextResult> {
+async function fetchToteatData(
+  currentMessage: string,
+  priorUserMessages: string[] = [],
+): Promise<string> {
+  const params = parseToteatQueryParams(currentMessage, priorUserMessages);
+
+  try {
+    const data = await getToteatDashboardData({
+      startDate: params.startDate,
+      endDate: params.endDate,
+      restaurantId: params.restaurantId,
+      hourFrom: params.hourFrom,
+      hourTo: params.hourTo,
+    });
+
+    if (params.comparePeriod) {
+      const previous = await getToteatDashboardData({
+        startDate: params.comparePeriod.startDate,
+        endDate: params.comparePeriod.endDate,
+        restaurantId: params.restaurantId,
+        hourFrom: params.hourFrom,
+        hourTo: params.hourTo,
+      });
+      return formatToteatComparisonForAI(data, previous, params);
+    }
+
+    return formatToteatForAI(data, params);
+  } catch (err) {
+    console.error("[ContextBuilder] Toteat fetch error:", err);
+    return `[ERROR_TECNICO] Error al consultar API Toteat: ${String(err)}`;
+  }
+}
+
+export async function buildContext(
+  userMessage: string,
+  options?: BuildContextOptions,
+): Promise<ContextResult> {
+  const chatMode = options?.chatMode ?? "auto";
+  const priorUserMessages = options?.priorUserMessages ?? [];
+
+  if (chatMode === "toteat") {
+    let data = "";
+    try {
+      data = await fetchToteatData(userMessage, priorUserMessages);
+    } catch (error) {
+      console.error("[ContextBuilder] Error fetching Toteat data:", error);
+      data = "[ERROR_TECNICO] Error al obtener datos de Toteat.";
+    }
+    return { module: "toteat", data, systemPrompt: getSystemPrompt("toteat") };
+  }
+
   const module = detectModule(userMessage);
   let data = "";
 

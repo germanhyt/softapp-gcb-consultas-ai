@@ -9,6 +9,7 @@ import { getApiKey, getEnabledModelIds } from "./ai-config";
 import {
   AI_PROVIDERS,
   FALLBACK_GOOGLE_MODEL_ID,
+  resolveModelId,
   type AIProviderInfo,
 } from "./models";
 
@@ -19,7 +20,8 @@ export { AI_PROVIDERS, type AIProviderInfo } from "./models";
  * Creates a model instance dynamically using the API key from config (or env fallback).
  */
 export function getModel(modelId: string) {
-  const info = AI_PROVIDERS[modelId];
+  const resolvedId = resolveModelId(modelId);
+  const info = AI_PROVIDERS[resolvedId];
   if (!info) {
     const googleKey = getApiKey("google");
     const google = createGoogleGenerativeAI({ apiKey: googleKey || undefined });
@@ -31,22 +33,22 @@ export function getModel(modelId: string) {
   switch (info.providerKey) {
     case "google": {
       const google = createGoogleGenerativeAI({ apiKey: apiKey || undefined });
-      return google(modelId as Parameters<typeof google>[0]);
+      return google(resolvedId as Parameters<typeof google>[0]);
     }
     case "anthropic": {
       const anthropic = createAnthropic({ apiKey: apiKey || undefined });
-      return anthropic(modelId as Parameters<typeof anthropic>[0]);
+      return anthropic(resolvedId as Parameters<typeof anthropic>[0]);
     }
     case "openai": {
       const openai = createOpenAI({ apiKey: apiKey || undefined });
-      return openai(modelId as Parameters<typeof openai>[0]);
+      return openai(resolvedId as Parameters<typeof openai>[0]);
     }
     case "deepseek": {
       const deepseekProvider = createDeepSeek({
         apiKey: apiKey || undefined,
       });
       return deepseekProvider(
-        modelId as Parameters<typeof deepseekProvider>[0],
+        resolvedId as Parameters<typeof deepseekProvider>[0],
       );
     }
     default: {

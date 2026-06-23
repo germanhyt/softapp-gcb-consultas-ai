@@ -1,11 +1,12 @@
 "use client";
 
 import { COMPANY_NAME } from "@/lib/config/brand";
+import { TOTEAT_SALES_REPORT_NAME } from "@/lib/toteat/source-context";
 
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useGlobalChat, type ChatMessage } from "@/contexts/chat-context";
 import { ChatInput } from "./chat-input";
-import { ModelSelector } from "./model-selector";
+import { ChatHeader } from "./chat-header";
 import { Button } from "@/components/ui/button";
 import {
   Bot,
@@ -19,12 +20,12 @@ import {
   Users,
   ChevronDown,
   X,
-  MessageCircle,
   Maximize2,
   Minimize2,
   User,
   Square,
   Star,
+  Store,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageContent } from "./message-content";
@@ -32,8 +33,8 @@ import { FavoritesPanel } from "./favorites-panel";
 import { SaveFavoriteDialog } from "./save-favorite-dialog";
 import { isFavoriteQuery } from "@/lib/favorites";
 
-// Suggested questions per module
-const SUGGESTIONS = [
+// Suggested questions per mode
+const AUTO_SUGGESTIONS = [
   {
     icon: CreditCard,
     text: "¿Cuál es la cobertura de conciliación de esta semana?",
@@ -55,6 +56,180 @@ const SUGGESTIONS = [
     description: "Rendimiento algoritmos",
   },
 ];
+
+const TOTEAT_SUGGESTIONS = [
+  {
+    icon: Store,
+    text: "¿Cuáles fueron las ventas Toteat de ayer?",
+    description: "Venta bruta y neta",
+  },
+  {
+    icon: Store,
+    text: "¿Cuál es el ticket promedio por negocio esta semana?",
+    description: "Refugio / Sisa / Limanesas",
+  },
+  {
+    icon: Store,
+    text: "Top meseros Toteat del último mes",
+    description: "Ranking de meseros",
+  },
+  {
+    icon: Store,
+    text: "¿Cuánto vendió Sisa en turno noche ayer?",
+    description: "Cruce interno + turno",
+  },
+];
+
+function ChatEmptyState({
+  chatMode,
+  sendMessage,
+  compact,
+}: {
+  chatMode: "auto" | "toteat";
+  sendMessage: (content: string) => void;
+  compact: boolean;
+}) {
+  const suggestions = chatMode === "toteat" ? TOTEAT_SUGGESTIONS : AUTO_SUGGESTIONS;
+  const visible = compact ? suggestions.slice(0, 3) : suggestions;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center flex-1 text-center",
+        compact ? "px-4 py-8" : "px-4 sm:px-6 py-10 sm:py-16",
+      )}
+    >
+      <div className={cn("relative mb-5", !compact && "sm:mb-7")}>
+        <div
+          className={cn(
+            "flex items-center justify-center rounded-full",
+            compact ? "h-14 w-14" : "h-16 w-16 sm:h-20 sm:w-20",
+          )}
+          style={{
+            background: chatMode === "toteat" ? "#38d149" : "var(--primary)",
+            boxShadow:
+              chatMode === "toteat"
+                ? "0 0 28px rgba(56,209,73,0.45)"
+                : "0 0 40px rgba(56,209,73,0.40)",
+          }}
+        >
+          {chatMode === "toteat" ? (
+            <Store className={cn(compact ? "h-7 w-7" : "h-8 w-8 sm:h-10 sm:w-10")} style={{ color: "#0f1a11" }} />
+          ) : (
+            <Bot
+              className={cn(compact ? "h-7 w-7" : "h-8 w-8 sm:h-10 sm:w-10")}
+              style={{ color: "var(--primary-foreground)" }}
+            />
+          )}
+        </div>
+      </div>
+
+      <h3
+        className={cn("font-bold mb-1", compact ? "text-sm sm:text-base" : "text-xl sm:text-2xl mb-2")}
+        style={{ color: "var(--foreground)" }}
+      >
+        {chatMode === "toteat" ? "Consultas Toteat" : `Asistente ${COMPANY_NAME}`}
+      </h3>
+      <p
+        className={cn(
+          "max-w-md mb-5 leading-relaxed",
+          compact ? "text-xs max-w-[280px] mb-5" : "text-xs sm:text-sm mb-8",
+        )}
+        style={{ color: "var(--foreground-muted)" }}
+      >
+        {chatMode === "toteat" ? (
+          <>
+            Consultas en vivo del{" "}
+            <strong style={{ color: "var(--foreground)" }}>reporte de ventas {TOTEAT_SALES_REPORT_NAME}</strong>{" "}
+            en Toteat: ventas, ticket promedio, meseros, medios de pago y cruce interno Refugio / Sisa /
+            Limanesas.
+          </>
+        ) : (
+          <>
+            Puedo ayudarte con{" "}
+            <strong style={{ color: "var(--foreground)" }}>conciliación de tarjetas</strong>, ventas,
+            estacionamiento y flujo de personas. Activa el modo <strong style={{ color: "var(--foreground)" }}>Toteat</strong> para
+            consultar cierres POS.
+          </>
+        )}
+      </p>
+
+      <div className={cn("w-full", compact ? "max-w-[320px]" : "max-w-lg px-2")}>
+        <p
+          className={cn(
+            "font-bold uppercase tracking-widest",
+            compact ? "text-[10px] mb-2" : "text-[10px] sm:text-xs mb-4",
+          )}
+          style={{ color: "var(--foreground-subtle)" }}
+        >
+          {compact ? "Sugerencias" : "Prueba preguntando"}
+        </p>
+        <div className={cn(compact ? "grid grid-cols-1 gap-2" : "grid grid-cols-1 sm:grid-cols-2 gap-3")}>
+          {visible.map((s, i) => {
+            const Icon = s.icon;
+            return (
+              <button
+                key={i}
+                onClick={() => sendMessage(s.text)}
+                className={cn(
+                  "flex items-start gap-3 rounded-xl text-left transition-all duration-150",
+                  compact ? "items-center gap-2.5 px-3 py-2" : "px-4 py-3",
+                )}
+                style={{
+                  background: "var(--surface-2)",
+                  border: "1px solid var(--border)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(56,209,73,0.35)";
+                  (e.currentTarget as HTMLElement).style.background = "rgba(56,209,73,0.06)";
+                  if (!compact) (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                  (e.currentTarget as HTMLElement).style.background = "var(--surface-2)";
+                  if (!compact) (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+                }}
+              >
+                <div
+                  className={cn(
+                    "flex shrink-0 items-center justify-center rounded-lg",
+                    compact ? "h-6 w-6" : "h-7 w-7 sm:h-8 sm:w-8",
+                  )}
+                  style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
+                >
+                  <Icon className={cn(compact ? "h-3 w-3" : "h-3.5 w-3.5 sm:h-4 sm:w-4")} />
+                </div>
+                <div className="min-w-0">
+                  <p
+                    className={cn("font-medium", compact ? "text-xs truncate" : "text-xs sm:text-sm")}
+                    style={{ color: compact ? "var(--foreground-muted)" : "var(--foreground)" }}
+                  >
+                    {s.text}
+                  </p>
+                  {!compact && (
+                    <p className="text-[10px] sm:text-xs mt-0.5 hidden sm:block" style={{ color: "var(--foreground-subtle)" }}>
+                      {s.description}
+                    </p>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className={cn("mt-5", compact ? "text-[10px]" : "mt-8 text-[10px] sm:text-xs")} style={{ color: "var(--foreground-subtle)" }}>
+        <kbd
+          className={cn("rounded font-mono", compact ? "px-1 py-0.5 text-[9px]" : "px-1.5 py-0.5")}
+          style={{ background: "var(--surface-3)", color: "var(--foreground-muted)" }}
+        >
+          Ctrl+K
+        </kbd>{" "}
+        para abrir/cerrar
+      </p>
+    </div>
+  );
+}
 
 function formatTime(isoString: string): string {
   try {
@@ -293,7 +468,7 @@ export function FloatingChatButton() {
         <X className="h-6 w-6" />
       ) : (
         <>
-          <MessageCircle className="h-6 w-6" />
+          <Bot className="h-6 w-6" />
           {unreadCount > 0 && messages.length > 0 && (
             <span
               className="absolute -top-1 -right-1 h-5 w-5 rounded-full text-white text-xs flex items-center justify-center"
@@ -316,6 +491,7 @@ export function FloatingChatWindow() {
     error,
     isOpen,
     isExpanded,
+    chatMode,
     sendMessage,
     clearMessages,
     regenerateLastResponse,
@@ -368,101 +544,79 @@ export function FloatingChatWindow() {
       className="fixed bottom-20 sm:bottom-24 right-2 sm:right-6 z-50 w-[calc(100vw-16px)] sm:w-[400px] h-[70vh] sm:h-[600px] max-h-[80vh] rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300"
       style={{ background: "var(--surface)", border: "1px solid var(--border-strong)" }}
     >
-      {/* Header */}
-      <div
-        className="flex-shrink-0 flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3"
-        style={{
-          background: "linear-gradient(135deg, #1a2e1c 0%, #162518 100%)",
-          borderBottom: "1px solid rgba(56,209,73,0.20)",
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-white/20 text-white shadow-sm">
-            <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
-          </div>
-          <div>
-            <h3 className="text-xs sm:text-sm font-semibold text-white">
-              {`Asistente ${COMPANY_NAME}`}
-            </h3>
-            <div className="flex items-center gap-1.5">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-300" />
-              </span>
-              <ModelSelector />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-0.5 sm:gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowFavorites(true)}
-            className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-white hover:bg-white/10"
-            title="Favoritos"
-          >
-            <Star className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleExpanded}
-            className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-white hover:bg-white/10"
-            title="Expandir"
-          >
-            <Maximize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          </Button>
-          {isLoading && (
+      <ChatHeader
+        compact
+        actions={
+          <>
             <Button
               variant="ghost"
               size="icon"
-              onClick={stopGenerating}
-              className="h-7 w-7 sm:h-8 sm:w-8 text-red-300 hover:text-red-200 hover:bg-white/10"
-              title="Detener"
+              onClick={() => setShowFavorites(true)}
+              className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-white hover:bg-white/10"
+              title="Favoritos"
             >
-              <Square className="h-3 w-3" />
+              <Star className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
-          )}
-          {messages.length > 0 && (
-            <>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleExpanded}
+              className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-white hover:bg-white/10"
+              title="Expandir"
+            >
+              <Maximize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </Button>
+            {isLoading && (
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={regenerateLastResponse}
-                disabled={isLoading || messages.length < 2}
-                className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-white hover:bg-white/10"
-                title="Regenerar"
+                onClick={stopGenerating}
+                className="h-7 w-7 sm:h-8 sm:w-8 text-red-300 hover:text-red-200 hover:bg-white/10"
+                title="Detener"
               >
-                <RefreshCw
-                  className={cn(
-                    "h-3.5 w-3.5 sm:h-4 sm:w-4",
-                    isLoading && "animate-spin"
-                  )}
-                />
+                <Square className="h-3 w-3" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={clearMessages}
-                disabled={isLoading}
-                className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-red-300 hover:bg-white/10"
-                title="Limpiar"
-              >
-                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              </Button>
-            </>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsOpen(false)}
-            className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-          </Button>
-        </div>
-      </div>
+            )}
+            {messages.length > 0 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={regenerateLastResponse}
+                  disabled={isLoading || messages.length < 2}
+                  className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-white hover:bg-white/10"
+                  title="Regenerar"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "h-3.5 w-3.5 sm:h-4 sm:w-4",
+                      isLoading && "animate-spin",
+                    )}
+                  />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={clearMessages}
+                  disabled={isLoading}
+                  className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-red-300 hover:bg-white/10"
+                  title="Limpiar"
+                >
+                  <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                </Button>
+              </>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsOpen(false)}
+              className="h-7 w-7 sm:h-8 sm:w-8 text-white/80 hover:text-white hover:bg-white/10"
+            >
+              <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </Button>
+          </>
+        }
+      />
 
       {/* Save favorite dialog */}
       {savingFavoriteQuery && (
@@ -489,93 +643,7 @@ export function FloatingChatWindow() {
 
         <div className="min-h-full flex flex-col">
           {messages.length === 0 ? (
-            // ── Empty state (compact) ─────────────────────────────────────────
-            <div className="flex flex-col items-center justify-center flex-1 px-4 py-8 text-center">
-              {/* Avatar */}
-              <div className="relative mb-5">
-                <div
-                  className="flex h-14 w-14 items-center justify-center rounded-full"
-                  style={{
-                    background: "var(--primary)",
-                    boxShadow: "0 0 28px rgba(56,209,73,0.40)",
-                  }}
-                >
-                  <Sparkles className="h-7 w-7" style={{ color: "var(--primary-foreground)" }} />
-                </div>
-                <div
-                  className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full shadow-md"
-                  style={{
-                    background: "var(--surface-2)",
-                    border: "1px solid var(--border-strong)",
-                  }}
-                >
-                  <Bot className="h-3 w-3" style={{ color: "var(--primary)" }} />
-                </div>
-              </div>
-
-              <h3 className="text-sm sm:text-base font-bold mb-1" style={{ color: "var(--foreground)" }}>
-                {`Asistente ${COMPANY_NAME}`}
-              </h3>
-              <p className="text-xs max-w-[280px] mb-5 leading-relaxed" style={{ color: "var(--foreground-muted)" }}>
-                Puedo ayudarte con{" "}
-                <strong style={{ color: "var(--foreground)" }}>conciliación de tarjetas</strong>, ventas,
-                estacionamiento y flujo de personas.
-              </p>
-
-              {/* Suggestions */}
-              <div className="w-full max-w-[320px]">
-                <p
-                  className="text-[10px] mb-2 font-bold uppercase tracking-widest"
-                  style={{ color: "var(--foreground-subtle)" }}
-                >
-                  Sugerencias
-                </p>
-                <div className="grid grid-cols-1 gap-2">
-                  {SUGGESTIONS.slice(0, 3).map((s, i) => {
-                    const Icon = s.icon;
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => sendMessage(s.text)}
-                        className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all duration-150"
-                        style={{
-                          background: "var(--surface-2)",
-                          border: "1px solid var(--border)",
-                        }}
-                        onMouseEnter={e => {
-                          (e.currentTarget as HTMLElement).style.borderColor = "rgba(56,209,73,0.35)";
-                          (e.currentTarget as HTMLElement).style.background = "rgba(56,209,73,0.06)";
-                        }}
-                        onMouseLeave={e => {
-                          (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-                          (e.currentTarget as HTMLElement).style.background = "var(--surface-2)";
-                        }}
-                      >
-                        <div
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
-                          style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
-                        >
-                          <Icon className="h-3 w-3" />
-                        </div>
-                        <span className="text-xs font-medium truncate" style={{ color: "var(--foreground-muted)" }}>
-                          {s.text}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <p className="mt-5 text-[10px]" style={{ color: "var(--foreground-subtle)" }}>
-                <kbd
-                  className="px-1 py-0.5 rounded text-[9px] font-mono"
-                  style={{ background: "var(--surface-3)", color: "var(--foreground-muted)" }}
-                >
-                  Ctrl+K
-                </kbd>{" "}
-                para abrir/cerrar
-              </p>
-            </div>
+            <ChatEmptyState chatMode={chatMode} sendMessage={sendMessage} compact />
           ) : (
             <div className="flex-1">
               {messages.map((message) => (
@@ -626,7 +694,11 @@ export function FloatingChatWindow() {
         <ChatInput
           onSend={sendMessage}
           isLoading={isLoading}
-          placeholder="Pregunta sobre conciliación, ventas..."
+          placeholder={
+            chatMode === "toteat"
+              ? "Pregunta sobre ventas Toteat, ticket, meseros..."
+              : "Pregunta sobre conciliación, ventas..."
+          }
         />
       </div>
     </div>
@@ -641,6 +713,7 @@ export function ExpandedChatPanel() {
     error,
     isOpen,
     isExpanded,
+    chatMode,
     sendMessage,
     clearMessages,
     regenerateLastResponse,
@@ -696,101 +769,73 @@ export function ExpandedChatPanel() {
       className="fixed inset-0 z-50 flex flex-col"
       style={{ background: "var(--background)" }}
     >
-      {/* Header */}
-      <div
-        className="flex-shrink-0 flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4"
-        style={{
-          background: "linear-gradient(135deg, #1a2e1c 0%, #162518 100%)",
-          borderBottom: "1px solid rgba(56,209,73,0.20)",
-        }}
-      >
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white/20 text-white shadow-md">
-            <Bot className="h-5 w-5 sm:h-6 sm:w-6" />
-          </div>
-          <div>
-            <h3 className="text-sm sm:text-base font-semibold text-white">
-              {`Asistente ${COMPANY_NAME}`}
-            </h3>
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-300" />
-              </span>
-              <ModelSelector />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowFavorites(true)}
-            className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-white hover:bg-white/10"
-            title="Favoritos"
-          >
-            <Star className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleExpanded}
-            className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-white hover:bg-white/10"
-            title="Modo compacto"
-          >
-            <Minimize2 className="h-4 w-4" />
-          </Button>
-          {isLoading && (
+      <ChatHeader
+        actions={
+          <>
             <Button
               variant="ghost"
               size="icon"
-              onClick={stopGenerating}
-              className="h-8 w-8 sm:h-9 sm:w-9 text-red-300 hover:text-red-200 hover:bg-white/10"
-              title="Detener generación"
+              onClick={() => setShowFavorites(true)}
+              className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-white hover:bg-white/10"
+              title="Favoritos"
             >
-              <Square className="h-3.5 w-3.5" />
+              <Star className="h-4 w-4" />
             </Button>
-          )}
-          {messages.length > 0 && (
-            <>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleExpanded}
+              className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-white hover:bg-white/10"
+              title="Modo compacto"
+            >
+              <Minimize2 className="h-4 w-4" />
+            </Button>
+            {isLoading && (
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={regenerateLastResponse}
-                disabled={isLoading || messages.length < 2}
-                className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-white hover:bg-white/10"
-                title="Regenerar"
+                onClick={stopGenerating}
+                className="h-8 w-8 sm:h-9 sm:w-9 text-red-300 hover:text-red-200 hover:bg-white/10"
+                title="Detener generación"
               >
-                <RefreshCw
-                  className={cn(
-                    "h-4 w-4",
-                    isLoading && "animate-spin"
-                  )}
-                />
+                <Square className="h-3.5 w-3.5" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={clearMessages}
-                disabled={isLoading}
-                className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-red-300 hover:bg-white/10"
-                title="Limpiar"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleClose}
-            className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-white hover:bg-white/10"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+            )}
+            {messages.length > 0 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={regenerateLastResponse}
+                  disabled={isLoading || messages.length < 2}
+                  className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-white hover:bg-white/10"
+                  title="Regenerar"
+                >
+                  <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={clearMessages}
+                  disabled={isLoading}
+                  className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-red-300 hover:bg-white/10"
+                  title="Limpiar"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleClose}
+              className="h-8 w-8 sm:h-9 sm:w-9 text-white/80 hover:text-white hover:bg-white/10"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </>
+        }
+      />
 
       {/* Save favorite dialog */}
       {savingFavoriteQuery && (
@@ -818,102 +863,7 @@ export function ExpandedChatPanel() {
 
         <div className="min-h-full flex flex-col">
           {messages.length === 0 ? (
-            // ── Empty state (expanded) ──────────────────────────────────────
-            <div className="flex flex-col items-center justify-center flex-1 px-4 sm:px-6 py-10 sm:py-16 text-center">
-              {/* Avatar */}
-              <div className="relative mb-5 sm:mb-7">
-                <div
-                  className="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full"
-                  style={{
-                    background: "var(--primary)",
-                    boxShadow: "0 0 40px rgba(56,209,73,0.40)",
-                  }}
-                >
-                  <Sparkles className="h-8 w-8 sm:h-10 sm:w-10" style={{ color: "var(--primary-foreground)" }} />
-                </div>
-                <div
-                  className="absolute -bottom-1 -right-1 flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full shadow-md"
-                  style={{
-                    background: "var(--surface-2)",
-                    border: "1px solid var(--border-strong)",
-                  }}
-                >
-                  <Bot className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: "var(--primary)" }} />
-                </div>
-              </div>
-
-              <h3 className="text-xl sm:text-2xl font-bold mb-2" style={{ color: "var(--foreground)" }}>
-                {`Asistente ${COMPANY_NAME}`}
-              </h3>
-              <p className="text-xs sm:text-sm max-w-md mb-8 leading-relaxed" style={{ color: "var(--foreground-muted)" }}>
-                Consulta sobre{" "}
-                <strong style={{ color: "var(--foreground)" }}>conciliación de tarjetas</strong>,{" "}
-                <strong style={{ color: "var(--foreground)" }}>ventas</strong>,{" "}
-                <strong style={{ color: "var(--foreground)" }}>estacionamiento</strong> y{" "}
-                <strong style={{ color: "var(--foreground)" }}>flujo de personas</strong>.
-              </p>
-
-              {/* Suggestions grid */}
-              <div className="w-full max-w-lg px-2">
-                <p
-                  className="text-[10px] sm:text-xs mb-4 font-bold uppercase tracking-widest"
-                  style={{ color: "var(--foreground-subtle)" }}
-                >
-                  Prueba preguntando
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {SUGGESTIONS.map((s, i) => {
-                    const Icon = s.icon;
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => sendMessage(s.text)}
-                        className="flex items-start gap-3 px-4 py-3 rounded-xl text-left transition-all duration-150"
-                        style={{
-                          background: "var(--surface-2)",
-                          border: "1px solid var(--border)",
-                        }}
-                        onMouseEnter={e => {
-                          (e.currentTarget as HTMLElement).style.borderColor = "rgba(56,209,73,0.35)";
-                          (e.currentTarget as HTMLElement).style.background = "rgba(56,209,73,0.06)";
-                          (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
-                        }}
-                        onMouseLeave={e => {
-                          (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-                          (e.currentTarget as HTMLElement).style.background = "var(--surface-2)";
-                          (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
-                        }}
-                      >
-                        <div
-                          className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg"
-                          style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
-                        >
-                          <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs sm:text-sm font-medium" style={{ color: "var(--foreground)" }}>
-                            {s.text}
-                          </p>
-                          <p className="text-[10px] sm:text-xs mt-0.5 hidden sm:block" style={{ color: "var(--foreground-subtle)" }}>
-                            {s.description}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <p className="mt-8 text-[10px] sm:text-xs" style={{ color: "var(--foreground-subtle)" }}>
-                <kbd
-                  className="px-1.5 py-0.5 rounded font-mono"
-                  style={{ background: "var(--surface-3)", color: "var(--foreground-muted)" }}
-                >
-                  Ctrl+K
-                </kbd>{" "}
-                para abrir/cerrar
-              </p>
-            </div>
+            <ChatEmptyState chatMode={chatMode} sendMessage={sendMessage} compact={false} />
           ) : (
             <div className="flex-1">
               {messages.map((message) => (
@@ -964,7 +914,11 @@ export function ExpandedChatPanel() {
         <ChatInput
           onSend={sendMessage}
           isLoading={isLoading}
-          placeholder="Pregunta sobre conciliación, ventas..."
+          placeholder={
+            chatMode === "toteat"
+              ? "Pregunta sobre ventas Toteat, ticket, meseros..."
+              : "Pregunta sobre conciliación, ventas..."
+          }
         />
       </div>
     </div>
