@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:local": "docker compose -f docker-compose.dev.yml up -d && next dev --webpack",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "db:logs": "docker compose -f docker-compose.dev.yml logs -f consultas-refugio-pg",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint"

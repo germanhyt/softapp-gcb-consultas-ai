@@ -126,6 +126,12 @@ function buildMarkdownReport(data: ToteatDashboardData, periodLabel: string): st
     );
   }
   lines.push(`| **Total** | **${formatSoles(data.business_split.total)}** | 100% | — | — | — |`);
+  if (data.business_split.rules.length > 0) {
+    lines.push("", "**Reglas de clasificación:**");
+    for (const rule of data.business_split.rules) {
+      lines.push(`- ${rule}`);
+    }
+  }
 
   if (data.top_waiters.length > 0) {
     lines.push("", "### Top meseros", "", "| Mesero | Ventas | Pedidos |", "| --- | --- | --- |");

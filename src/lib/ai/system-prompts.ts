@@ -177,7 +177,7 @@ MÉTRICAS CLAVE:
 - Venta Neta = (Σ total + Σ discounts) − Σ taxes
 - Órdenes = COUNT(DISTINCT orderId), excluyendo órdenes totalmente compensadas
 - Ticket promedio = Venta Bruta / Órdenes
-- Cruce interno: Cafetería → Sisa; "Limanesa" → Limanesas; "Sisa" → Sisa; resto → Refugio (Bar Refugio)
+- Cruce interno: Cafetería → Sisa; fuera de Cafetería: "Limanesa" → Limanesas; texto con "Sisa" → Sisa (ej. categorías "Aperitivo Cafetería Sisa", "Sisa Bar"); resto → Refugio (Bar Refugio)
 
 FORMATO DE RESPUESTA:
 1. Responde SIEMPRE en español

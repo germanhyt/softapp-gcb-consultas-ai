@@ -53,6 +53,12 @@ function sectionBusiness(data: ToteatDashboardData): string[] {
       `| ${b.business} | ${formatSoles(b.total)} | ${b.percentage}% | ${b.orders} | ${formatSoles(b.average_ticket)} |`,
     );
   }
+  if (data.business_split.rules.length > 0) {
+    lines.push("", "**Reglas de clasificación:**");
+    for (const rule of data.business_split.rules) {
+      lines.push(`- ${rule}`);
+    }
+  }
   return lines;
 }
 

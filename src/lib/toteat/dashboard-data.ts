@@ -258,8 +258,6 @@ export async function getToteatDashboardData(
     xapitoken: cfg.xapitoken,
   });
   const ranges = splitDateRange(startDate, endDate, 15);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), cfg.timeoutMs);
 
   try {
     const allRows: ToteatSaleRow[] = [];
@@ -269,10 +267,26 @@ export async function getToteatDashboardData(
       const salesUrl = `${cfg.baseUrl}/sales?${baseParams.toString()}&ini=${r.ini}&end=${r.end}`;
       const cancellationUrl = `${cfg.baseUrl}/orders/cancellation-report?${baseParams.toString()}&start_date=${formatYmdCompactToDashed(r.ini)}&end_date=${formatYmdCompactToDashed(r.end)}`;
 
-      const [salesRes, cancellationRes] = await Promise.all([
-        fetch(salesUrl, { signal: controller.signal }),
-        fetch(cancellationUrl, { signal: controller.signal }).catch(() => null),
-      ]);
+      const chunkController = new AbortController();
+      const chunkTimeout = setTimeout(() => chunkController.abort(), cfg.timeoutMs);
+
+      let salesRes: Response;
+      let cancellationRes: Response | null;
+      try {
+        [salesRes, cancellationRes] = await Promise.all([
+          fetch(salesUrl, { signal: chunkController.signal }),
+          fetch(cancellationUrl, { signal: chunkController.signal }).catch(() => null),
+        ]);
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          throw new Error(
+            `Timeout al consultar API Toteat (${cfg.timeoutMs}ms por bloque de ${r.ini}-${r.end}). Reduce el rango o aumenta TOTEAT_TIMEOUT_MS.`,
+          );
+        }
+        throw err;
+      } finally {
+        clearTimeout(chunkTimeout);
+      }
 
       if (!salesRes.ok) throw new Error(`Toteat sales error ${salesRes.status}`);
       const salesJson = (await salesRes.json()) as { ok?: boolean; msg?: unknown; data?: ToteatSaleRow[] };
@@ -429,31 +443,37 @@ export async function getToteatDashboardData(
     };
 
     try {
-      const fiscalRes = await fetch(
-        `${cfg.baseUrl}/fiscaldocuments?${baseParams.toString()}&ini=${toYmdCompact(startDate)}&end=${toYmdCompact(endDate)}`,
-        { signal: controller.signal },
-      );
-      if (fiscalRes.ok) {
-        const fiscalJson = (await fiscalRes.json()) as unknown;
-        if (Array.isArray(fiscalJson)) {
-          const typeCounter = new Map<string, number>();
-          for (const doc of fiscalJson) {
-            const type = String(
-              (doc as { type?: string; doc_type?: string }).type ||
-                (doc as { type?: string; doc_type?: string }).doc_type ||
-                "unknown",
-            );
-            typeCounter.set(type, (typeCounter.get(type) || 0) + 1);
+      const fiscalController = new AbortController();
+      const fiscalTimeout = setTimeout(() => fiscalController.abort(), cfg.timeoutMs);
+      try {
+        const fiscalRes = await fetch(
+          `${cfg.baseUrl}/fiscaldocuments?${baseParams.toString()}&ini=${toYmdCompact(startDate)}&end=${toYmdCompact(endDate)}`,
+          { signal: fiscalController.signal },
+        );
+        if (fiscalRes.ok) {
+          const fiscalJson = (await fiscalRes.json()) as unknown;
+          if (Array.isArray(fiscalJson)) {
+            const typeCounter = new Map<string, number>();
+            for (const doc of fiscalJson) {
+              const type = String(
+                (doc as { type?: string; doc_type?: string }).type ||
+                  (doc as { type?: string; doc_type?: string }).doc_type ||
+                  "unknown",
+              );
+              typeCounter.set(type, (typeCounter.get(type) || 0) + 1);
+            }
+            fiscal_documents = {
+              available: true,
+              total: fiscalJson.length,
+              by_type: Array.from(typeCounter.entries()).map(([type, count]) => ({ type, count })),
+              message: "Documentos fiscales obtenidos correctamente.",
+            };
+          } else {
+            fiscal_documents.message = String((fiscalJson as { msg?: unknown }).msg || "No autorizado.");
           }
-          fiscal_documents = {
-            available: true,
-            total: fiscalJson.length,
-            by_type: Array.from(typeCounter.entries()).map(([type, count]) => ({ type, count })),
-            message: "Documentos fiscales obtenidos correctamente.",
-          };
-        } else {
-          fiscal_documents.message = String((fiscalJson as { msg?: unknown }).msg || "No autorizado.");
         }
+      } finally {
+        clearTimeout(fiscalTimeout);
       }
     } catch {
       // ignore
@@ -538,7 +558,7 @@ export async function getToteatDashboardData(
         rules: [
           "zone/sector Cafeteria => Sisa",
           "fuera de Cafeteria: categoría o producto con 'Limanesa' => Limanesas",
-          "fuera de Cafeteria: categoría o producto con 'Sisa' => Sisa",
+          "fuera de Cafeteria: categoría o producto que contenga 'Sisa' => Sisa (ej. 'Aperitivo Cafetería Sisa', 'Sisa Bar')",
           "resto => Refugio",
           "monto asignado por línea usando products[].payed (estimado operativo)",
         ],
@@ -569,7 +589,12 @@ export async function getToteatDashboardData(
       },
       fiscal_documents,
     };
-  } finally {
-    clearTimeout(timeout);
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        `Timeout al consultar API Toteat (${cfg.timeoutMs}ms). Reduce el rango o aumenta TOTEAT_TIMEOUT_MS.`,
+      );
+    }
+    throw err;
   }
 }

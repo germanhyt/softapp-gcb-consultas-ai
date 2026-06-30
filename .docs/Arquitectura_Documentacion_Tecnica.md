@@ -162,7 +162,7 @@ El cruce interno **no viene de Toteat**; se calcula en el proyecto a partir de `
 
 1. Si `zoneName` contiene "cafeter" → **Sisa**
 2. Si `hierarchyName` o `name` del producto contiene "limanesa" → **Limanesas**
-3. Si `hierarchyName` o `name` del producto contiene "sisa" → **Sisa**
+3. Si `hierarchyName` o `name` del producto contiene "sisa" → **Sisa** (p. ej. categorías *Aperitivo Cafetería Sisa*, *Sisa Bar*)
 4. Resto → **Refugio** (Bar Refugio)
 
 **Monto asignado:** `products[].payed` por línea (estimado operativo, no contable fiscal).
