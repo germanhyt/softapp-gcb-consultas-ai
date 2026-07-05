@@ -7,19 +7,13 @@ import { COMPANY_NAME } from "@/lib/config/brand";
 import { Button } from "@/components/ui/button";
 import { Loader2, LogIn, AlertCircle, Eye, EyeOff } from "lucide-react";
 
-/** Credenciales demo para entorno local (coinciden con AUTH_ADMIN_* por defecto). */
-const MOCK_LOGIN = {
-  email: "admin@elrefugio.pe",
-  password: "CambiarPassword123!",
-};
-
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/";
 
-  const [email, setEmail] = useState(MOCK_LOGIN.email);
-  const [password, setPassword] = useState(MOCK_LOGIN.password);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +72,7 @@ function LoginForm() {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
                 className="w-full px-3 py-2 pr-10 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <button
@@ -102,10 +97,6 @@ function LoginForm() {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
             Entrar
           </Button>
-
-          <p className="text-[10px] text-center text-muted-foreground">
-            Demo local: {MOCK_LOGIN.email}
-          </p>
         </form>
       </div>
     </div>
