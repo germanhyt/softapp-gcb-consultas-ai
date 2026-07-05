@@ -2,6 +2,8 @@ import { generateText } from "ai";
 import { getModel } from "@/lib/ai/providers";
 import { DEFAULT_MODEL_ID } from "@/lib/ai/models";
 import { COMPANY_NAME } from "@/lib/config/brand";
+import { AuthError, requireAuth } from "@/lib/auth/guard";
+import { isAuthEnabled } from "@/lib/auth/config";
 
 export const maxDuration = 30;
 
@@ -28,6 +30,10 @@ Responde SOLAMENTE con un JSON con esta estructura (sin markdown, sin backticks)
 
 export async function POST(req: Request) {
   try {
+    if (isAuthEnabled()) {
+      await requireAuth("viewer");
+    }
+
     const { query } = await req.json();
 
     if (!query || typeof query !== "string") {
@@ -67,6 +73,12 @@ export async function POST(req: Request) {
       );
     }
   } catch (error) {
+    if (error instanceof AuthError) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: error.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     console.error("[Improve Prompt] Error:", error);
     const message =
       error instanceof Error ? error.message : "Error al mejorar consulta";

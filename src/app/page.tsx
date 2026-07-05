@@ -8,6 +8,7 @@ import { MonthlyChart } from "@/components/dashboard/monthly-chart";
 import { NegocioTable } from "@/components/dashboard/negocio-table";
 import { MediosPagoChart } from "@/components/dashboard/medios-pago-chart";
 import { TrendCharts, ChartsData } from "@/components/dashboard/trend-charts";
+import { SalesPeriodTrend } from "@/components/dashboard/sales-period-trend";
 
 export interface NegocioData {
   total: number;
@@ -250,6 +251,13 @@ export default function DashboardPage() {
     ? filters.startDate
     : `${filters.startDate} → ${filters.endDate}`;
 
+  const hasPeriodTrend = !!(
+    chartsData?.tendencia &&
+    (chartsData.tendencia.por_dia.length > 0 ||
+      chartsData.tendencia.por_semana.length > 0 ||
+      chartsData.tendencia.por_mes.length > 0)
+  );
+
   const hasCharts = !!(chartsData && (
     chartsData.por_turno.length > 0 ||
     chartsData.por_dia.length > 0 ||
@@ -367,6 +375,12 @@ export default function DashboardPage() {
             negocio_count={negocio_count}
             propinas={displayPropinas > 0 ? displayPropinas : undefined}
           />
+
+          {hasPeriodTrend && chartsData?.tendencia && (
+            <SectionCard title="Tendencia de Ventas">
+              <SalesPeriodTrend data={chartsData.tendencia} />
+            </SectionCard>
+          )}
 
           {showMonthly && (
             <SectionCard title="Tendencia Mensual — Ventas por Negocio">

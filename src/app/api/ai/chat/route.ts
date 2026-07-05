@@ -9,6 +9,8 @@ import { buildContext } from "@/lib/ai/context-builder";
 import { DEFAULT_MODEL_ID, resolveModelId } from "@/lib/ai/models";
 import { textFromUIMessageParts } from "@/lib/ai/ui-message-text";
 import { COMPANY_NAME } from "@/lib/config/brand";
+import { AuthError, requireAuth } from "@/lib/auth/guard";
+import { isAuthEnabled } from "@/lib/auth/config";
 
 const LEGACY_BRAND_RE = /\bEl Refugio\b/gi;
 
@@ -42,6 +44,10 @@ function sanitizeUIMessagesForModel(messages: UIMessage[]): UIMessage[] {
 
 export async function POST(req: Request) {
   try {
+    if (isAuthEnabled()) {
+      await requireAuth("viewer");
+    }
+
     const body = await req.json();
     const messages = body.messages as UIMessage[] | undefined;
     const modelId = body.modelId as string | undefined;
@@ -142,6 +148,12 @@ export async function POST(req: Request) {
       headers,
     });
   } catch (error) {
+    if (error instanceof AuthError) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: error.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     console.error("[AI Chat] Error:", error);
     const message =
       error instanceof Error ? error.message : "Error interno del servidor";

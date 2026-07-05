@@ -16,6 +16,11 @@ export interface ChartsData {
   por_turno: TurnoPoint[];
   por_dia:   DiaPoint[];
   por_hora:  HoraPoint[];
+  tendencia?: {
+    por_dia: Array<{ periodo: string; label: string; total: number; transacciones: number }>;
+    por_semana: Array<{ periodo: string; label: string; total: number; transacciones: number }>;
+    por_mes: Array<{ periodo: string; label: string; total: number; transacciones: number }>;
+  };
 }
 
 type ChartMode = "bar" | "line";

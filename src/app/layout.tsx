@@ -3,8 +3,7 @@ import { COMPANY_NAME, PRODUCT_NAME } from "@/lib/config/brand";
 import Image from "next/image";
 import { Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
-import { ChatProvider } from "@/contexts/chat-context";
-import { FloatingChat } from "@/components/assistant/floating-chat";
+import { ChatShell } from "@/components/assistant/chat-shell";
 import { UserNav } from "@/components/auth/user-nav";
 
 const hanken = Hanken_Grotesk({
@@ -44,7 +43,7 @@ export default function RootLayout({
   return (
     <html lang="es" className={hanken.variable}>
       <body className="min-h-screen antialiased">
-        <ChatProvider>
+        <ChatShell>
           {/* ── Header ─────────────────────────────────────────────────────── */}
           <header
             className="sticky top-0 z-30"
@@ -111,9 +110,7 @@ export default function RootLayout({
             {children}
           </main>
 
-          {/* ── Floating chat ──────────────────────────────────────────────── */}
-          <FloatingChat />
-        </ChatProvider>
+        </ChatShell>
       </body>
     </html>
   );

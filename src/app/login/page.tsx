@@ -5,15 +5,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { COMPANY_NAME } from "@/lib/config/brand";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogIn, AlertCircle } from "lucide-react";
+import { Loader2, LogIn, AlertCircle, Eye, EyeOff } from "lucide-react";
+
+/** Credenciales demo para entorno local (coinciden con AUTH_ADMIN_* por defecto). */
+const MOCK_LOGIN = {
+  email: "admin@elrefugio.pe",
+  password: "CambiarPassword123!",
+};
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/";
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(MOCK_LOGIN.email);
+  const [password, setPassword] = useState(MOCK_LOGIN.password);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,14 +71,24 @@ function LoginForm() {
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground">Contraseña</label>
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-            />
+            <div className="relative mt-1">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2 pr-10 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -85,6 +102,10 @@ function LoginForm() {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
             Entrar
           </Button>
+
+          <p className="text-[10px] text-center text-muted-foreground">
+            Demo local: {MOCK_LOGIN.email}
+          </p>
         </form>
       </div>
     </div>

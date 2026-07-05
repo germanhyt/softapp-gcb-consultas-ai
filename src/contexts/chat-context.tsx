@@ -107,7 +107,13 @@ function loadChatMode(): ChatMode {
   return isChatMode(stored) ? stored : "auto";
 }
 
-export function ChatProvider({ children }: { children: React.ReactNode }) {
+export function ChatProvider({
+  children,
+  chatEnabled = true,
+}: {
+  children: React.ReactNode;
+  chatEnabled?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedModel, setSelectedModelState] = useState(DEFAULT_MODEL_ID);
@@ -182,6 +188,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [aiMessages, isInitialized]);
 
   useEffect(() => {
+    if (!chatEnabled) {
+      setIsOpen(false);
+      setIsExpanded(false);
+    }
+  }, [chatEnabled]);
+
+  useEffect(() => {
+    if (!chatEnabled) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
@@ -193,7 +207,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, chatEnabled]);
 
   const messages: ChatMessage[] = aiMessages.map((m) => ({
     id: m.id,
@@ -212,11 +226,11 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const sendMessage = useCallback(
     (content: string) => {
-      if (!content.trim() || isLoading) return;
+      if (!chatEnabled || !content.trim() || isLoading) return;
       clearError();
       void sendChatMessage({ text: content.trim() });
     },
-    [sendChatMessage, isLoading, clearError],
+    [sendChatMessage, isLoading, clearError, chatEnabled],
   );
 
   const clearMessages = useCallback(() => {

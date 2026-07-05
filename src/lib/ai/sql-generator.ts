@@ -26,6 +26,7 @@ const MODULE_HINTS: Record<BQModule, string> = {
 - Turno puede ser 'Mañana' o 'Noche'. Cuando el usuario diga "turno mañana" o "turno noche" filtra por esta columna.
 - Monto es la columna de importe. Cantidad es unidades vendidas.
 - No existe una sola columna "medio de pago"; para desglose por canal/medio usa CASE sobre Cliente y Producto (Rappi, PedidosYa, UberEats, Fidelio, Pago Link, Eventos, Salón presencial, etc.), coherente con análisis de canales de venta.
+- Bosque Mágico: solo cuando Cliente/Producto contiene "bosque m" o "cajita bosque" (no cócteles "del bosque").
 - Para presupuesto vs real: JOIN \`${BQ_PROJECT}.Ventas.Presupuesto\` por CodigoNegocio y mes.
 - Metas globales: \`${BQ_PROJECT}.Ventas.MontosMeta\`. Pronósticos: \`${BQ_PROJECT}.Ventas.Pronostico\`, \`${BQ_PROJECT}.Ventas.Predicciones\`.
 - IMPORTANTE: Cuando el usuario mencione "bar", "el bar", "del bar" se refiere al negocio "BAR REFUGIO". SIEMPRE filtra con: UPPER(COALESCE(n.Descripcion, '')) LIKE '%BAR%'
