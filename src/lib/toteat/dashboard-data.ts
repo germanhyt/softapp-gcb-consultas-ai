@@ -20,6 +20,7 @@ interface ToteatProduct {
   name?: string;
   quantity?: number;
   payed?: number;
+  hierarchyId?: string | number;
   hierarchyName?: string;
 }
 
@@ -139,6 +140,28 @@ function isCafeteriaZone(zoneName?: string): boolean {
   return normalizeText(String(zoneName || "")).includes("cafeter");
 }
 
+function isSisaBarCategory(hierarchyName?: string, productName?: string): boolean {
+  const hierarchy = normalizeText(hierarchyName || "");
+  const product = normalizeText(productName || "");
+  return hierarchy.includes("sisa bar") || product.includes("sisa bar");
+}
+
+/** Fuera de zona Cafetería: categorías explícitas Sisa (detalle ventas, no jerarquía). */
+function isSisaOutsideCafeteria(hierarchyName?: string, productName?: string): boolean {
+  if (isSisaBarCategory(hierarchyName, productName)) return false;
+
+  const hierarchy = normalizeText(hierarchyName || "");
+  const product = normalizeText(productName || "");
+
+  if (hierarchy.includes("aperitivo cafeteria sisa") || product.includes("aperitivo cafeteria sisa")) {
+    return true;
+  }
+  if (hierarchy === "sisa") return true;
+
+  return false;
+}
+
+/** Cruce interno alineado al detalle de ventas Toteat (zona + categoría), no ventas por jerarquía. */
 function classifyByCategory(
   zoneName: string | undefined,
   hierarchyName: string | undefined,
@@ -147,7 +170,7 @@ function classifyByCategory(
   if (isCafeteriaZone(zoneName)) return "Sisa";
   const text = normalizeText(`${hierarchyName || ""} ${productName || ""}`);
   if (text.includes("limanesa")) return "Limanesas";
-  if (text.includes("sisa")) return "Sisa";
+  if (isSisaOutsideCafeteria(hierarchyName, productName)) return "Sisa";
   return "Refugio";
 }
 
@@ -556,10 +579,11 @@ export async function getToteatDashboardData(
         .slice(0, 12),
       business_split: {
         rules: [
+          "Detalle de ventas (zona + categoría) — no ventas por jerarquía",
           "zone/sector Cafeteria => Sisa",
           "fuera de Cafeteria: categoría o producto con 'Limanesa' => Limanesas",
-          "fuera de Cafeteria: categoría o producto que contenga 'Sisa' => Sisa (ej. 'Aperitivo Cafetería Sisa', 'Sisa Bar')",
-          "resto => Refugio",
+          "fuera de Cafeteria: categoría 'Aperitivo Cafetería Sisa' o categoría 'Sisa' => Sisa (excluye 'Sisa Bar')",
+          "resto => Refugio (Bar Refugio)",
           "monto asignado por línea usando products[].payed (estimado operativo)",
         ],
         by_business: (["Sisa", "Limanesas", "Refugio"] as InternalBusiness[]).map((business) => ({

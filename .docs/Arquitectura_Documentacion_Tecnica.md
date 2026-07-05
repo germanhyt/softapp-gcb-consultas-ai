@@ -158,12 +158,14 @@ El dashboard replica la lógica del **Resumen de Ventas** del cierre nativo de T
 
 El cruce interno **no viene de Toteat**; se calcula en el proyecto a partir de `products[]` de cada fila de venta.
 
-**Reglas de clasificación** (en orden de prioridad):
+**Reglas de clasificación** (detalle de ventas — zona + categoría; **no** ventas por jerarquía):
 
 1. Si `zoneName` contiene "cafeter" → **Sisa**
 2. Si `hierarchyName` o `name` del producto contiene "limanesa" → **Limanesas**
-3. Si `hierarchyName` o `name` del producto contiene "sisa" → **Sisa** (p. ej. categorías *Aperitivo Cafetería Sisa*, *Sisa Bar*)
+3. Fuera de Cafetería: categoría **Aperitivo Cafetería Sisa** o categoría exacta **Sisa** → **Sisa** (no *Sisa Bar*)
 4. Resto → **Refugio** (Bar Refugio)
+
+**Nota:** el cruce interno **no** replica el reporte *ventas por jerarquía* (p. ej. AB.200 / AB.300360). Para Sisa puede diferir ~0,1–2% vs jerarquía por ventas en otra zona con carta distinta.
 
 **Monto asignado:** `products[].payed` por línea (estimado operativo, no contable fiscal).
 
@@ -342,7 +344,7 @@ ticket_promedio_negocio = businessTotals[negocio] / businessOrders[negocio].size
 | Negocio | Numerador | Denominador |
 | --- | --- | --- |
 | Refugio | `Σ products[].payed` clasificados como Refugio | `COUNT(DISTINCT orderId)` con al menos una línea Refugio |
-| Sisa | idem (zona Cafetería o producto/categoría "sisa") | órdenes con líneas Sisa |
+| Sisa | idem (zona Cafetería; fuera: categoría *Aperitivo Cafetería Sisa* o *Sisa*; no *Sisa Bar*) | órdenes con líneas Sisa |
 | Limanesas | idem (producto/categoría "limanesa") | órdenes con líneas Limanesas |
 
 **Importante:** una misma orden puede contar en más de un negocio si mezcla productos (p. ej. bar + cafetería). El ticket por negocio mide el **monto promedio atribuido** a ese negocio por orden que lo tocó, no reparte el total de la mesa entre negocios.
