@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeBigQuery, BQ_PROJECT } from "@/lib/data/bigquery-client";
+import { VENTAS_TRANSACCIONES_SQL } from "@/lib/data/ventas-transacciones-sql";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
       SELECT
         TRIM(COALESCE(s.Turno, 'Sin Turno'))   AS turno,
         ROUND(SUM(s.Monto), 2)                 AS total,
-        COUNT(DISTINCT s.CodigoTransaccion)    AS transacciones
+        (${VENTAS_TRANSACCIONES_SQL})          AS transacciones
       FROM \`${BQ_PROJECT}.Ventas.sales_df\` s
       LEFT JOIN \`${BQ_PROJECT}.Ventas.Negocios\` n ON s.CodigoNegocio = n.CodigoNegocio
       ${baseWhere}
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
       SELECT
         EXTRACT(DAYOFWEEK FROM DATE(s.Fecha))  AS dia_num,
         ROUND(SUM(s.Monto), 2)                 AS total,
-        COUNT(DISTINCT s.CodigoTransaccion)    AS transacciones
+        (${VENTAS_TRANSACCIONES_SQL})          AS transacciones
       FROM \`${BQ_PROJECT}.Ventas.sales_df\` s
       LEFT JOIN \`${BQ_PROJECT}.Ventas.Negocios\` n ON s.CodigoNegocio = n.CodigoNegocio
       ${baseWhere}
@@ -103,7 +104,7 @@ export async function GET(req: NextRequest) {
       SELECT
         SAFE_CAST(SPLIT(TRIM(s.Hora), ':')[SAFE_OFFSET(0)] AS INT64)  AS hora,
         ROUND(SUM(s.Monto), 2)                                         AS total,
-        COUNT(DISTINCT s.CodigoTransaccion)                            AS transacciones
+        (${VENTAS_TRANSACCIONES_SQL})                            AS transacciones
       FROM \`${BQ_PROJECT}.Ventas.sales_df\` s
       LEFT JOIN \`${BQ_PROJECT}.Ventas.Negocios\` n ON s.CodigoNegocio = n.CodigoNegocio
       ${baseWhere}
@@ -117,7 +118,7 @@ export async function GET(req: NextRequest) {
       SELECT
         CAST(DATE(s.Fecha) AS STRING)          AS periodo,
         ROUND(SUM(s.Monto), 2)                 AS total,
-        COUNT(DISTINCT s.CodigoTransaccion)    AS transacciones
+        (${VENTAS_TRANSACCIONES_SQL})          AS transacciones
       FROM \`${BQ_PROJECT}.Ventas.sales_df\` s
       LEFT JOIN \`${BQ_PROJECT}.Ventas.Negocios\` n ON s.CodigoNegocio = n.CodigoNegocio
       ${baseWhere}
@@ -129,7 +130,7 @@ export async function GET(req: NextRequest) {
       SELECT
         CAST(DATE_TRUNC(DATE(s.Fecha), WEEK(MONDAY)) AS STRING) AS periodo,
         ROUND(SUM(s.Monto), 2)                                  AS total,
-        COUNT(DISTINCT s.CodigoTransaccion)                     AS transacciones
+        (${VENTAS_TRANSACCIONES_SQL})                     AS transacciones
       FROM \`${BQ_PROJECT}.Ventas.sales_df\` s
       LEFT JOIN \`${BQ_PROJECT}.Ventas.Negocios\` n ON s.CodigoNegocio = n.CodigoNegocio
       ${baseWhere}
@@ -141,7 +142,7 @@ export async function GET(req: NextRequest) {
       SELECT
         FORMAT_DATE('%Y-%m', DATE(s.Fecha))     AS periodo,
         ROUND(SUM(s.Monto), 2)                 AS total,
-        COUNT(DISTINCT s.CodigoTransaccion)    AS transacciones
+        (${VENTAS_TRANSACCIONES_SQL})          AS transacciones
       FROM \`${BQ_PROJECT}.Ventas.sales_df\` s
       LEFT JOIN \`${BQ_PROJECT}.Ventas.Negocios\` n ON s.CodigoNegocio = n.CodigoNegocio
       ${baseWhere}

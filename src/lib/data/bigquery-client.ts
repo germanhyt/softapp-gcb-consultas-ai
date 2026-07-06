@@ -35,9 +35,9 @@ export const BQ_SCHEMA = {
       sales_df: {
         rows: 525438,
         columns:
-          "Fecha(STRING), Hora(STRING), CodigoTransaccion(STRING), Producto(STRING), Cliente(STRING), CodigoNegocio(STRING), Monto(FLOAT), Cantidad(FLOAT), Turno(STRING), Estado(STRING)",
+          "Fecha(STRING), Hora(STRING), CodigoTransaccion(STRING), Producto(STRING), Cliente(STRING), CodigoNegocio(STRING), Monto(FLOAT), Cantidad(FLOAT), Turno(STRING), Estado(STRING), FormaPago(STRING), FormaPagoModificado(STRING)",
         notes:
-          "Tabla principal de ventas. Fecha 'YYYY-MM-DD'. Hora 'HH:MM:SS'. Turno: 'Mañana' o 'Noche'. Usar LEFT(Fecha,10) para comparar fechas.",
+          "Tabla principal de ventas. Fecha 'YYYY-MM-DD'. Hora 'HH:MM:SS'. Turno: 'Mañana' o 'Noche'. Medios de pago: usar FormaPagoModificado (con fallback a FormaPago si vacío).",
       },
       Negocios: {
         rows: 60,

@@ -6,15 +6,16 @@ import { DateFilter, DashboardFilters } from "@/components/dashboard/date-filter
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { MonthlyChart } from "@/components/dashboard/monthly-chart";
 import { NegocioTable } from "@/components/dashboard/negocio-table";
-import { MediosPagoChart } from "@/components/dashboard/medios-pago-chart";
 import { TrendCharts, ChartsData } from "@/components/dashboard/trend-charts";
 import { SalesPeriodTrend } from "@/components/dashboard/sales-period-trend";
+import { mergeMediosPagoMaps } from "@/lib/config/column-rules";
 
 export interface NegocioData {
   total: number;
   presupuesto?: number;
   canales: Record<string, number>;
-  propinas?: number;
+  transacciones?: number;
+  ticket_promedio?: number;
   medios_pago?: Record<string, number>;
 }
 
@@ -24,6 +25,8 @@ interface MonthData {
   negocios: Record<string, NegocioData>;
   total: number;
   presupuesto?: number;
+  transacciones?: number;
+  ticket_promedio?: number;
 }
 
 interface DashboardResponse {
@@ -32,7 +35,8 @@ interface DashboardResponse {
   months: MonthData[];
   year_total: number;
   year_presupuesto?: number;
-  year_propinas?: number;
+  year_transacciones?: number;
+  year_ticket_promedio?: number;
   error?: string;
 }
 
@@ -166,17 +170,17 @@ export default function DashboardPage() {
         for (const [canal, amount] of Object.entries(nd.canales || {})) {
           merged[neg].canales[canal] = Math.round(((merged[neg].canales[canal] || 0) + amount) * 100) / 100;
         }
-        if (nd.propinas) {
-          merged[neg].propinas = Math.round(((merged[neg].propinas || 0) + nd.propinas) * 100) / 100;
+        if (nd.transacciones) {
+          merged[neg].transacciones = (merged[neg].transacciones || 0) + nd.transacciones;
         }
         if (nd.medios_pago) {
-          const mp = merged[neg].medios_pago || { efectivo: 0, tarjeta: 0, otros: 0 };
-          merged[neg].medios_pago = {
-            efectivo: Math.round((mp.efectivo + nd.medios_pago.efectivo) * 100) / 100,
-            tarjeta:  Math.round((mp.tarjeta  + nd.medios_pago.tarjeta)  * 100) / 100,
-            otros:    Math.round((mp.otros    + nd.medios_pago.otros)    * 100) / 100,
-          };
+          merged[neg].medios_pago = mergeMediosPagoMaps(merged[neg].medios_pago, nd.medios_pago);
         }
+      }
+    }
+    for (const nd of Object.values(merged)) {
+      if (nd.transacciones && nd.transacciones > 0) {
+        nd.ticket_promedio = Math.round((nd.total / nd.transacciones) * 100) / 100;
       }
     }
     return merged;
@@ -212,34 +216,39 @@ export default function DashboardPage() {
     });
   }, [data, hideNegociosSinVentas, displayNegocios]);
 
-  const { displayTotal, displayPresupuesto, displayPropinas } = useMemo(() => {
+  const { displayTotal, displayPresupuesto, displayTransacciones, displayTicketPromedio } = useMemo(() => {
     if (!data) {
       return {
         displayTotal: 0,
         displayPresupuesto: undefined as number | undefined,
-        displayPropinas: 0,
+        displayTransacciones: 0,
+        displayTicketPromedio: undefined as number | undefined,
       };
     }
     if (!hideNegociosSinVentas) {
       return {
         displayTotal: data.year_total,
         displayPresupuesto: data.year_presupuesto,
-        displayPropinas: data.year_propinas ?? 0,
+        displayTransacciones: data.year_transacciones ?? 0,
+        displayTicketPromedio: data.year_ticket_promedio,
       };
     }
     let total = 0;
     let presupuesto = 0;
-    let propinas = 0;
+    let transacciones = 0;
     for (const nd of Object.values(displayNegocios)) {
       total += nd.total;
       presupuesto += nd.presupuesto || 0;
-      propinas += nd.propinas || 0;
+      transacciones += nd.transacciones || 0;
     }
+    const displayTotal = Math.round(total * 100) / 100;
     return {
-      displayTotal: Math.round(total * 100) / 100,
+      displayTotal,
       displayPresupuesto:
         presupuesto > 0 ? Math.round(presupuesto * 100) / 100 : undefined,
-      displayPropinas: propinas > 0 ? Math.round(propinas * 100) / 100 : 0,
+      displayTransacciones: transacciones > 0 ? transacciones : 0,
+      displayTicketPromedio:
+        transacciones > 0 ? Math.round((displayTotal / transacciones) * 100) / 100 : undefined,
     };
   }, [data, hideNegociosSinVentas, displayNegocios]);
 
@@ -373,7 +382,8 @@ export default function DashboardPage() {
             total={displayTotal}
             presupuesto={displayPresupuesto}
             negocio_count={negocio_count}
-            propinas={displayPropinas > 0 ? displayPropinas : undefined}
+            transacciones={displayTransacciones > 0 ? displayTransacciones : undefined}
+            ticket_promedio={displayTicketPromedio}
           />
 
           {hasPeriodTrend && chartsData?.tendencia && (
@@ -411,18 +421,6 @@ export default function DashboardPage() {
               />
             </div>
           )}
-
-          {(() => {
-            const negsMedios = Object.entries(displayNegocios)
-              .filter(([, d]) => d.medios_pago && Object.keys(d.medios_pago).length > 0)
-              .map(([neg, d]) => ({ negocio: neg, medios_pago: d.medios_pago! }));
-            if (!negsMedios.length) return null;
-            return (
-              <SectionCard title="Medios de Pago por Negocio — Efectivo, Tarjeta, Otros (TOTEAT)">
-                <MediosPagoChart negocios={negsMedios} />
-              </SectionCard>
-            );
-          })()}
         </>
       )}
     </div>

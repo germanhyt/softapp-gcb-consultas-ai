@@ -93,7 +93,7 @@ CONTEXTO DEL NEGOCIO:
 
 MÉTRICAS CLAVE:
 - Venta Total = SUM(Monto)
-- Ticket Promedio = SUM(Monto) / COUNT(DISTINCT CodigoTransaccion)
+- Ticket Promedio = SUM(Monto) / transacciones, donde transacciones = COUNT(DISTINCT CodigoTransaccion válido, excluye "-") + SUM(Cantidad) en filas sin código válido.
 - Cumplimiento presupuesto = Venta Real / Presupuesto × 100%
 
 FORMATO DE RESPUESTA:

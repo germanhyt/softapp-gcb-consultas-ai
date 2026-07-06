@@ -1,0 +1,243 @@
+{
+  "generated_at": "2026-07-02",
+  "source": "Toteat /sales",
+  "history_weeks": [
+    {
+      "start": "2026-06-01",
+      "end": "2026-06-07",
+      "rows": 1633,
+      "total_qty": 3722.0
+    },
+    {
+      "start": "2026-06-08",
+      "end": "2026-06-14",
+      "rows": 2068,
+      "total_qty": 4586.0
+    },
+    {
+      "start": "2026-06-15",
+      "end": "2026-06-21",
+      "rows": 1963,
+      "total_qty": 4732.0
+    },
+    {
+      "start": "2026-06-22",
+      "end": "2026-06-28",
+      "rows": 2218,
+      "total_qty": 5166.0
+    }
+  ],
+  "target_week": {
+    "start": "2026-07-06",
+    "end": "2026-07-12"
+  },
+  "week_totals_qty": [
+    3722.0,
+    4586.0,
+    4732.0,
+    5166.0
+  ],
+  "projected_total_qty": 4750.25,
+  "projected_top_20": [
+    {
+      "product": "Pilsen",
+      "w1": 200.0,
+      "w2": 198.0,
+      "w3": 329.0,
+      "w4": 314.0,
+      "avg4": 260.25,
+      "trend": 122.5,
+      "projected_qty": 290.88
+    },
+    {
+      "product": "Pilsen 6x65",
+      "w1": 220.0,
+      "w2": 138.0,
+      "w3": 281.0,
+      "w4": 263.0,
+      "avg4": 225.5,
+      "trend": 93.0,
+      "projected_qty": 248.75
+    },
+    {
+      "product": "Coca Cola",
+      "w1": 206.0,
+      "w2": 293.0,
+      "w3": 205.0,
+      "w4": 209.0,
+      "avg4": 228.25,
+      "trend": -42.5,
+      "projected_qty": 217.62
+    },
+    {
+      "product": "Tinto de Verano",
+      "w1": 169.0,
+      "w2": 235.0,
+      "w3": 203.0,
+      "w4": 194.0,
+      "avg4": 200.25,
+      "trend": -3.5,
+      "projected_qty": 199.38
+    },
+    {
+      "product": "San Luis sin Gas",
+      "w1": 150.0,
+      "w2": 154.0,
+      "w3": 210.0,
+      "w4": 203.0,
+      "avg4": 179.25,
+      "trend": 54.5,
+      "projected_qty": 192.88
+    },
+    {
+      "product": "Heineken 5x65",
+      "w1": 111.0,
+      "w2": 228.0,
+      "w3": 115.0,
+      "w4": 132.0,
+      "avg4": 146.5,
+      "trend": -46.0,
+      "projected_qty": 135.0
+    },
+    {
+      "product": "Cusque�a Trigo",
+      "w1": 146.0,
+      "w2": 140.0,
+      "w3": 132.0,
+      "w4": 108.0,
+      "avg4": 131.5,
+      "trend": -23.0,
+      "projected_qty": 125.75
+    },
+    {
+      "product": "Heineken",
+      "w1": 114.0,
+      "w2": 151.0,
+      "w3": 104.0,
+      "w4": 120.0,
+      "avg4": 122.25,
+      "trend": -20.5,
+      "projected_qty": 117.12
+    },
+    {
+      "product": "Pisco Sour",
+      "w1": 34.0,
+      "w2": 85.0,
+      "w3": 70.0,
+      "w4": 87.0,
+      "avg4": 69.0,
+      "trend": 19.0,
+      "projected_qty": 73.75
+    },
+    {
+      "product": "Cuba libre - Flor de Ca�a 5 a�os",
+      "w1": 61.0,
+      "w2": 58.0,
+      "w3": 65.0,
+      "w4": 77.0,
+      "avg4": 65.25,
+      "trend": 11.5,
+      "projected_qty": 68.12
+    },
+    {
+      "product": "Corona Bar",
+      "w1": 30.0,
+      "w2": 79.0,
+      "w3": 54.0,
+      "w4": 81.0,
+      "avg4": 61.0,
+      "trend": 13.0,
+      "projected_qty": 64.25
+    },
+    {
+      "product": "Chilcano",
+      "w1": 42.0,
+      "w2": 40.0,
+      "w3": 86.0,
+      "w4": 56.0,
+      "avg4": 56.0,
+      "trend": 30.0,
+      "projected_qty": 63.5
+    },
+    {
+      "product": "Stella Artois",
+      "w1": 53.0,
+      "w2": 61.0,
+      "w3": 57.0,
+      "w4": 67.0,
+      "avg4": 59.5,
+      "trend": 5.0,
+      "projected_qty": 60.75
+    },
+    {
+      "product": "Pi�a Colada",
+      "w1": 33.0,
+      "w2": 51.0,
+      "w3": 48.0,
+      "w4": 85.0,
+      "avg4": 54.25,
+      "trend": 24.5,
+      "projected_qty": 60.38
+    },
+    {
+      "product": "Chilcano Maracuy�",
+      "w1": 36.0,
+      "w2": 67.0,
+      "w3": 50.0,
+      "w4": 70.0,
+      "avg4": 55.75,
+      "trend": 8.5,
+      "projected_qty": 57.88
+    },
+    {
+      "product": "Aperol 2x49.90",
+      "w1": 29.0,
+      "w2": 74.0,
+      "w3": 55.0,
+      "w4": 49.0,
+      "avg4": 51.75,
+      "trend": 0.5,
+      "projected_qty": 51.88
+    },
+    {
+      "product": "Pizza All Meat",
+      "w1": 43.0,
+      "w2": 37.0,
+      "w3": 59.0,
+      "w4": 44.0,
+      "avg4": 45.75,
+      "trend": 11.5,
+      "projected_qty": 48.62
+    },
+    {
+      "product": "Pisco Sour Maracuy�",
+      "w1": 20.0,
+      "w2": 52.0,
+      "w3": 52.0,
+      "w4": 49.0,
+      "avg4": 43.25,
+      "trend": 14.5,
+      "projected_qty": 46.88
+    },
+    {
+      "product": "Cusque�a Dorada",
+      "w1": 34.0,
+      "w2": 52.0,
+      "w3": 49.0,
+      "w4": 44.0,
+      "avg4": 44.75,
+      "trend": 3.5,
+      "projected_qty": 45.62
+    },
+    {
+      "product": "Gin Tonic Tanqueray London",
+      "w1": 54.0,
+      "w2": 47.0,
+      "w3": 47.0,
+      "w4": 40.0,
+      "avg4": 47.0,
+      "trend": -7.0,
+      "projected_qty": 45.25
+    }
+  ]
+}

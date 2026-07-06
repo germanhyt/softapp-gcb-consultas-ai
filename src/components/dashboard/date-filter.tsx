@@ -155,23 +155,25 @@ function NegocioDropdown({
             )}
           </button>
           <div className="my-1" style={{ height: 1, background: "var(--border)" }} />
-          {negocioList.map((n) => (
-            <button
-              key={n}
-              onClick={() => onToggle(n)}
-              className="w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 font-medium transition-colors duration-100"
-              style={{
-                color: selected.includes(n) ? "#c4b5fd" : "var(--foreground-muted)",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-3)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-            >
-              <span>{n}</span>
-              {selected.includes(n) && (
-                <Check className="h-3.5 w-3.5 shrink-0" style={{ color: "#a78bfa" }} />
-              )}
-            </button>
-          ))}
+          <div className="max-h-44 overflow-y-auto overscroll-contain">
+            {negocioList.map((n) => (
+              <button
+                key={n}
+                onClick={() => onToggle(n)}
+                className="w-full text-left px-3 py-1.5 text-sm flex items-center justify-between gap-2 font-medium transition-colors duration-100"
+                style={{
+                  color: selected.includes(n) ? "#c4b5fd" : "var(--foreground-muted)",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-3)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
+                <span>{n}</span>
+                {selected.includes(n) && (
+                  <Check className="h-3.5 w-3.5 shrink-0" style={{ color: "#a78bfa" }} />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

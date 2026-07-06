@@ -2,7 +2,7 @@
 
 import { useState, Fragment } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
-import { formatSoles } from "@/lib/config/column-rules";
+import { formatSoles, COLUMN_CATEGORIES, MEDIO_PAGO_CATEGORIES } from "@/lib/config/column-rules";
 
 const DELIVERY_CANALES = ["Rappi", "PedidosYa", "UberEats"];
 const CANAL_SALON      = ["Salón", "Patio"];
@@ -12,7 +12,8 @@ interface NegocioData {
   total: number;
   presupuesto?: number;
   canales: Record<string, number>;
-  propinas?: number;
+  transacciones?: number;
+  ticket_promedio?: number;
   medios_pago?: Record<string, number>;
 }
 
@@ -108,12 +109,15 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
 
   const negocioList = Object.entries(negocios).sort(([, a], [, b]) => b.total - a.total);
   const hasBudget   = negocioList.some(([, d]) => d.presupuesto != null);
-  const hasPropinas = negocioList.some(([, d]) => d.propinas != null && d.propinas > 0);
+  const hasMetrics  = negocioList.some(([, d]) => (d.transacciones ?? 0) > 0);
 
   const toggle         = (neg: string) => setExpanded(p => ({ ...p, [neg]: !p[neg] }));
   const toggleDelivery = (neg: string) => setDeliveryExpanded(p => ({ ...p, [neg]: !p[neg] }));
 
-  const grandPropinas = negocioList.reduce((s, [, d]) => s + (d.propinas || 0), 0);
+  const grandTransacciones = negocioList.reduce((s, [, d]) => s + (d.transacciones || 0), 0);
+  const grandTicket = grand_total > 0 && grandTransacciones > 0
+    ? Math.round((grand_total / grandTransacciones) * 100) / 100
+    : undefined;
 
   // ── Row bg helpers ──────────────────────────────────────────────────────────
   const rowHover = "var(--surface-2)";
@@ -133,9 +137,10 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
               <th style={{ ...thStyle, textAlign: "right" }}>Presupuesto</th>
               <th style={{ ...thStyle, textAlign: "left" }}>Cumpl.</th>
             </>}
-            {hasPropinas && (
-              <th style={{ ...thStyle, textAlign: "right", color: "var(--secondary)" }}>Propinas</th>
-            )}
+            {hasMetrics && <>
+              <th style={{ ...thStyle, textAlign: "right" }}>Transacciones</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Ticket Prom.</th>
+            </>}
             <th style={{ ...thStyle, textAlign: "right" }}>% Total</th>
           </tr>
         </thead>
@@ -192,11 +197,14 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
                         : <span style={{ color: "var(--foreground-subtle)", fontSize: "0.75rem" }}>—</span>}
                     </td>
                   </>}
-                  {hasPropinas && (
-                    <td style={{ ...cellMuted, textAlign: "right", color: "var(--secondary)", fontVariantNumeric: "tabular-nums", fontSize: "0.75rem" }}>
-                      {data.propinas ? formatSoles(data.propinas) : "—"}
+                  {hasMetrics && <>
+                    <td style={{ ...cellMuted, textAlign: "right", fontVariantNumeric: "tabular-nums", fontSize: "0.75rem" }}>
+                      {data.transacciones ? data.transacciones.toLocaleString("es-PE") : "—"}
                     </td>
-                  )}
+                    <td style={{ ...cellMuted, textAlign: "right", color: "#38bdf8", fontVariantNumeric: "tabular-nums", fontSize: "0.75rem" }}>
+                      {data.ticket_promedio ? formatSoles(data.ticket_promedio) : "—"}
+                    </td>
+                  </>}
                   <td style={{ ...cellMuted, textAlign: "right", fontSize: "0.75rem", fontVariantNumeric: "tabular-nums" }}>
                     {pct(data.total, grand_total)}
                   </td>
@@ -207,26 +215,20 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
                   <>
                     {/* ── Medios de Pago ── */}
                     {isMediosView && data.medios_pago && (() => {
-                      const MP: Record<string, { label: string; color: string }> = {
-                        efectivo:  { label: "Efectivo",  color: "var(--primary)"   },
-                        tarjeta:   { label: "Tarjeta",   color: "#60a5fa"          },
-                        otros:     { label: "Otros",     color: "var(--secondary)" },
-                        pago_link: { label: "Pago Link", color: "#a78bfa"          },
-                        propinas:  { label: "Propinas",  color: "var(--secondary)" },
-                      };
-                      return Object.entries(MP).map(([key, { label, color }]) => {
+                      return MEDIO_PAGO_CATEGORIES.map((key) => {
+                        const def = COLUMN_CATEGORIES[key];
                         const amount = data.medios_pago![key] ?? 0;
                         if (amount <= 0) return null;
                         return (
                           <tr key={`${neg}-mp-${key}`} style={{ borderBottom: "1px solid var(--border)", background: subRowBg }}>
                             <td style={{ ...cellMuted, paddingLeft: "2.25rem" }}>
-                              <span className="flex items-center gap-1.5"><span className="w-3.5" />{label}</span>
+                              <span className="flex items-center gap-1.5"><span className="w-3.5" />{def?.label ?? key}</span>
                             </td>
-                            <td style={{ padding: "0.4rem 1rem", textAlign: "right", fontWeight: 500, color, fontVariantNumeric: "tabular-nums" }}>
+                            <td style={{ padding: "0.4rem 1rem", textAlign: "right", fontWeight: 500, color: def?.color ?? "var(--secondary)", fontVariantNumeric: "tabular-nums" }}>
                               {formatSoles(amount)}
                             </td>
                             {hasBudget  && <><td /><td /></>}
-                            {hasPropinas && <td />}
+                            {hasMetrics && <><td /><td /></>}
                             <td style={{ padding: "0.4rem 1rem", textAlign: "right", fontSize: "0.75rem", color: "var(--foreground-subtle)", fontVariantNumeric: "tabular-nums" }}>
                               {pct(amount, data.total)}
                             </td>
@@ -246,7 +248,7 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
                             {formatSoles(grouped.salon)}
                           </td>
                           {hasBudget  && <><td /><td /></>}
-                          {hasPropinas && <td />}
+                          {hasMetrics && <><td /><td /></>}
                           <td style={{ padding: "0.4rem 1rem", textAlign: "right", fontSize: "0.75rem", color: "var(--foreground-subtle)", fontVariantNumeric: "tabular-nums" }}>
                             {pct(grouped.salon, data.total)}
                           </td>
@@ -273,7 +275,7 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
                               {formatSoles(grouped.delivery.total)}
                             </td>
                             {hasBudget  && <><td /><td /></>}
-                            {hasPropinas && <td />}
+                            {hasMetrics && <><td /><td /></>}
                             <td style={{ padding: "0.4rem 1rem", textAlign: "right", fontSize: "0.75rem", color: "var(--foreground-subtle)", fontVariantNumeric: "tabular-nums" }}>
                               {pct(grouped.delivery.total, data.total)}
                             </td>
@@ -290,7 +292,7 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
                                   {formatSoles(amount)}
                                 </td>
                                 {hasBudget  && <><td /><td /></>}
-                                {hasPropinas && <td />}
+                                {hasMetrics && <><td /><td /></>}
                                 <td style={{ padding: "0.3rem 1rem", textAlign: "right", fontSize: "0.75rem", color: "var(--foreground-subtle)", fontVariantNumeric: "tabular-nums" }}>
                                   {pct(amount, grouped.delivery.total)}
                                 </td>
@@ -308,7 +310,7 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
                             {formatSoles(amount)}
                           </td>
                           {hasBudget  && <><td /><td /></>}
-                          {hasPropinas && <td />}
+                          {hasMetrics && <><td /><td /></>}
                           <td style={{ padding: "0.4rem 1rem", textAlign: "right", fontSize: "0.75rem", color: "var(--foreground-subtle)", fontVariantNumeric: "tabular-nums" }}>
                             {pct(amount, data.total)}
                           </td>
@@ -324,7 +326,7 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
                             {formatSoles(amount)}
                           </td>
                           {hasBudget  && <><td /><td /></>}
-                          {hasPropinas && <td />}
+                          {hasMetrics && <><td /><td /></>}
                           <td style={{ padding: "0.4rem 1rem", textAlign: "right", fontSize: "0.75rem", color: "var(--foreground-subtle)", fontVariantNumeric: "tabular-nums" }}>
                             {pct(amount, data.total)}
                           </td>
@@ -362,10 +364,15 @@ export function NegocioTable({ negocios, grand_total, viewMode = "canales" }: Ne
                 </td>
               </>
             )}
-            {hasPropinas && (
-              <td style={{ padding: "0.65rem 1rem", textAlign: "right", color: "var(--secondary)", fontVariantNumeric: "tabular-nums", fontSize: "0.75rem" }}>
-                {grandPropinas > 0 ? formatSoles(grandPropinas) : "—"}
-              </td>
+            {hasMetrics && (
+              <>
+                <td style={{ padding: "0.65rem 1rem", textAlign: "right", color: "var(--foreground-muted)", fontVariantNumeric: "tabular-nums", fontSize: "0.75rem" }}>
+                  {grandTransacciones > 0 ? grandTransacciones.toLocaleString("es-PE") : "—"}
+                </td>
+                <td style={{ padding: "0.65rem 1rem", textAlign: "right", color: "#38bdf8", fontVariantNumeric: "tabular-nums", fontSize: "0.75rem" }}>
+                  {grandTicket ? formatSoles(grandTicket) : "—"}
+                </td>
+              </>
             )}
             <td style={{ padding: "0.65rem 1rem", textAlign: "right", fontSize: "0.75rem", color: "var(--foreground-subtle)" }}>100%</td>
           </tr>

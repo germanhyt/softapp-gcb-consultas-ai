@@ -54,12 +54,7 @@ function horaColor(h: number): string {
   return "#6366f1";                          // noche — violet
 }
 
-// ── Formatters ────────────────────────────────────────────────────────────────
-function fmtSoles(v: number) {
-  if (v >= 1_000_000) return `S/${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000)     return `S/${(v / 1_000).toFixed(1)}K`;
-  return `S/${v.toFixed(0)}`;
-}
+import { formatChartAxisSolesWithPrefix, formatChartSolesExact } from "@/lib/config/chart-format";
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label, metric }: {
@@ -75,7 +70,7 @@ function CustomTooltip({ active, payload, label, metric }: {
     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-lg shadow-xl px-3 py-2 text-xs">
       <p className="font-bold text-slate-800 dark:text-slate-100 mb-1">{label}</p>
       <p className="text-emerald-700 dark:text-emerald-400 font-semibold">
-        {metric === "total" ? `S/ ${v.toLocaleString("es-PE", { minimumFractionDigits: 2 })}` : `${v.toLocaleString("es-PE")} transacciones`}
+        {metric === "total" ? formatChartSolesExact(v) : `${v.toLocaleString("es-PE")} transacciones`}
       </p>
     </div>
   );
@@ -110,7 +105,7 @@ function ChartPanel<T>({
   }
 
   const yFmt = metric === "total"
-    ? (v: number) => fmtSoles(v)
+    ? (v: number) => formatChartAxisSolesWithPrefix(v)
     : (v: number) => v.toLocaleString("es-PE");
 
   const commonAxis = {
@@ -122,7 +117,7 @@ function ChartPanel<T>({
     <BarChart data={data} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
       <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" vertical={false} />
       <XAxis dataKey={xKey as string} {...commonAxis} />
-      <YAxis tickFormatter={yFmt} {...commonAxis} width={52} />
+      <YAxis tickFormatter={yFmt} {...commonAxis} width={88} />
       <Tooltip content={(p) => <CustomTooltip {...p} metric={metric} />} />
       <Bar dataKey={valueKey as string} radius={[4, 4, 0, 0]} maxBarSize={56}>
         {data.map((d, i) => (
@@ -134,7 +129,7 @@ function ChartPanel<T>({
     <LineChart data={data} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
       <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" vertical={false} />
       <XAxis dataKey={xKey as string} {...commonAxis} />
-      <YAxis tickFormatter={yFmt} {...commonAxis} width={52} />
+      <YAxis tickFormatter={yFmt} {...commonAxis} width={88} />
       <Tooltip content={(p) => <CustomTooltip {...p} metric={metric} />} />
       <Line
         type="monotone"

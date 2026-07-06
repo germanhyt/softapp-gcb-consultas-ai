@@ -43,5 +43,5 @@ Thumbs.db
 # Docker (optional, but good to have if you don't want to commit specific docker caches)
 .dockerignore
 
-# Project specific (runtime data at repo root only)
-/data/
+# Project specific
+data/

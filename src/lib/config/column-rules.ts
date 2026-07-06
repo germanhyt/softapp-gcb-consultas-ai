@@ -26,6 +26,7 @@ export const COLUMN_CATEGORIES: Record<string, CategoryDef> = {
   delivery_otros: { label: "Delivery Otros",  columns: ["MercadoPago QR", "MercadoPago Checkout", "MACH", "Chek Ripley Pasarela", "FPay QR Statico"],                        color: "#6366f1" },
   transferencia:  { label: "Transferencia",   columns: ["Transferencia"],                                                                                                     color: "#8b5cf6" },
   cuponatic:      { label: "Cuponatic",       columns: ["Cuponatic", "Vale de consumo", "Ticket Restaurant", "Cheque Restaurant"],                                            color: "#14b8a6" },
+  fidelio:        { label: "Fidelio",         columns: [],                                                                                                                    color: "#22d3ee" },
   propinas:       { label: "Propinas",        columns: ["Propina"],                                                                                                           color: "#ec4899" },
   descuentos:     { label: "Descuentos",      columns: ["Descuentos"],                                                                                                        color: "#6b7280" },
 };
@@ -34,7 +35,7 @@ export const COLUMN_CATEGORIES: Record<string, CategoryDef> = {
 export const DELIVERY_CATEGORIES = ["rappi", "pedidosya", "uber", "delivery_otros"];
 
 /** Categories to show in the medio-de-pago pie chart (excluding ventas/descuentos) */
-export const MEDIO_PAGO_CATEGORIES = ["efectivo", "tarjeta", "rappi", "pedidosya", "uber", "delivery_otros", "transferencia", "cuponatic"];
+export const MEDIO_PAGO_CATEGORIES = ["efectivo", "tarjeta", "rappi", "pedidosya", "uber", "delivery_otros", "transferencia", "cuponatic", "fidelio"];
 
 /** Negocio detection rules — order matters (first match wins) */
 export const NEGOCIO_RULES = [
@@ -42,6 +43,48 @@ export const NEGOCIO_RULES = [
   { pattern: /sisa/i,       negocio: "SISA" },
   { pattern: /bar/i,        negocio: "Bar" },
 ];
+
+/**
+ * BigQuery usa nombres distintos a CuadreTarjetas/TOTEAT (p. ej. "Bar Refugio" vs "Bar").
+ * Claves en minúsculas → posibles claves en toteatMap (también en minúsculas).
+ */
+export const BQ_TOTEAT_NEGOCIO_ALIASES: Record<string, string[]> = {
+  "bar refugio": ["bar", "refugio"],
+  "sisa cafe": ["sisa"],
+  "sisa": ["sisa"],
+  "limanesas": ["limanesas"],
+};
+
+/** Busca stats TOTEAT para un negocio de BigQuery dentro del mapa mensual. */
+export function resolveToteatNegocioStats(
+  bqNegocio: string,
+  toteatMonth: Record<string, Record<string, number>>,
+): Record<string, number> | undefined {
+  const normalized = bqNegocio.toLowerCase().trim();
+  if (toteatMonth[normalized]) return toteatMonth[normalized];
+
+  for (const alias of BQ_TOTEAT_NEGOCIO_ALIASES[normalized] || []) {
+    if (toteatMonth[alias]) return toteatMonth[alias];
+  }
+
+  for (const [key, stats] of Object.entries(toteatMonth)) {
+    if (normalized.includes(key) || key.includes(normalized)) return stats;
+  }
+
+  return undefined;
+}
+
+/** Suma dos mapas de medios de pago (categorías aggregateByCategory). */
+export function mergeMediosPagoMaps(
+  base: Record<string, number> | undefined,
+  add: Record<string, number>,
+): Record<string, number> {
+  const result: Record<string, number> = { ...base };
+  for (const [k, v] of Object.entries(add)) {
+    result[k] = Math.round(((result[k] || 0) + v) * 100) / 100;
+  }
+  return result;
+}
 
 /**
  * Aggregates raw column stats { "Boleta": 167255, "Propina": 2226, ... }

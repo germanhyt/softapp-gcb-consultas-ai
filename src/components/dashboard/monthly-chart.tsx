@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PlotlyChart } from "@/components/charts/PlotlyChart";
+import { PLOTLY_SOLES_TICKFORMAT } from "@/lib/config/chart-format";
 
 // Refugio-aligned palette (vivid, dark-mode friendly)
 const PALETTE = [
@@ -50,13 +51,17 @@ export function MonthlyChart({ months }: MonthlyChartProps) {
     const y = months.map((m) => m.negocios[neg]?.total || 0);
 
     if (chartType === "bar") {
-      return { type: "bar", name: neg, x: xLabels, y, marker: { color } };
+      return {
+        type: "bar", name: neg, x: xLabels, y, marker: { color },
+        hovertemplate: "<b>%{fullData.name}</b><br>%{x}<br>S/ %{y:,.2f}<extra></extra>",
+      };
     } else if (chartType === "line") {
       return {
         type: "scatter", mode: "lines+markers", name: neg,
         x: xLabels, y,
         line: { color, width: 2.5 },
         marker: { color, size: 6 },
+        hovertemplate: "<b>%{fullData.name}</b><br>%{x}<br>S/ %{y:,.2f}<extra></extra>",
       };
     } else {
       return {
@@ -65,6 +70,7 @@ export function MonthlyChart({ months }: MonthlyChartProps) {
         stackgroup: "one",
         line: { color, width: 1.5 },
         fillcolor: color + "55",
+        hovertemplate: "<b>%{fullData.name}</b><br>%{x}<br>S/ %{y:,.2f}<extra></extra>",
       };
     }
   });
@@ -72,7 +78,7 @@ export function MonthlyChart({ months }: MonthlyChartProps) {
   const layout = {
     barmode: "stack",
     height: 280,
-    margin: { t: 16, r: 16, l: 70, b: 40 },
+    margin: { t: 16, r: 16, l: 96, b: 40 },
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
     showlegend: negocios.length > 1,
@@ -86,7 +92,8 @@ export function MonthlyChart({ months }: MonthlyChartProps) {
     yaxis: {
       gridcolor: "rgba(113,122,109,0.15)",
       tickprefix: "S/ ",
-      tickformat: ".2s",
+      tickformat: PLOTLY_SOLES_TICKFORMAT,
+      separatethousands: true,
       zeroline: false,
       tickfont: { size: 11, color: "#9DA89D" },
     },

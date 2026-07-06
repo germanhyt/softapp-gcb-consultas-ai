@@ -11,6 +11,18 @@ export const BOSQUE_MAGICO_MATCH_SQL = `
   OR REGEXP_CONTAINS(UPPER(COALESCE(s.Producto, '')), r'CAJITA BOSQUE')
 `;
 
+/** Fidelio como canal de venta (excluye líneas contables de descuento/promoción). */
+export const FIDELIO_CANAL_MATCH_SQL = `
+  (
+    UPPER(COALESCE(s.Cliente, '')) LIKE '%FIDELIO%'
+    AND TRIM(COALESCE(s.Cliente, '')) != '-'
+  )
+  OR (
+    REGEXP_CONTAINS(UPPER(COALESCE(s.Producto, '')), r'FIDELIO')
+    AND NOT REGEXP_CONTAINS(UPPER(COALESCE(s.Producto, '')), r'DESCUENTO|PROMOC')
+  )
+`;
+
 export const VENTAS_CANAL_CASE_SQL = `
   CASE
     WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%RAPPI%'
@@ -23,8 +35,7 @@ export const VENTAS_CANAL_CASE_SQL = `
     WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%UBER%'
       OR UPPER(COALESCE(s.Producto, '')) LIKE '%UBER%'
     THEN 'UberEats'
-    WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%FIDELIO%'
-      OR UPPER(COALESCE(s.Producto, '')) LIKE '%FIDELIO%'
+    WHEN ${FIDELIO_CANAL_MATCH_SQL}
     THEN 'Fidelio'
     WHEN UPPER(COALESCE(s.Cliente, '')) LIKE '%PAGO LINK%'
       OR UPPER(COALESCE(s.Cliente, '')) LIKE '%PAGOLINK%'
