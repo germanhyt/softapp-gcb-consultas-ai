@@ -224,6 +224,87 @@ function getClosedHour(isoDate?: string): number | null {
   return Number.isFinite(hour) ? hour : null;
 }
 
+const MESES_CORTO = [
+  "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+  "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+];
+
+/** Fecha calendario YYYY-MM-DD en America/Lima. */
+function getClosedYmdLima(isoDate?: string): string | null {
+  if (!isoDate) return null;
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.valueOf())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === "year")?.value;
+  const m = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+  if (!y || !m || !day) return null;
+  return `${y}-${m}-${day}`;
+}
+
+/** Lunes de la semana (ISO) para una fecha YYYY-MM-DD. */
+function mondayOfWeek(ymd: string): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  if (Number.isNaN(d.valueOf())) return ymd;
+  // getUTCDay: 0=Dom … 6=Sáb → desplazar a lunes
+  const dow = d.getUTCDay();
+  const offset = dow === 0 ? -6 : 1 - dow;
+  d.setUTCDate(d.getUTCDate() + offset);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatTendenciaDiaLabel(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(d.valueOf())) return iso;
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatTendenciaSemanaLabel(inicioIso: string): string {
+  const start = new Date(`${inicioIso}T12:00:00Z`);
+  if (Number.isNaN(start.valueOf())) return inicioIso;
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const fmt = (dt: Date) =>
+    `${String(dt.getUTCDate()).padStart(2, "0")} ${MESES_CORTO[dt.getUTCMonth()]}`;
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
+function formatTendenciaMesLabel(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (!y || !m) return ym;
+  return `${MESES_CORTO[m - 1] ?? m} ${y}`;
+}
+
+function bumpPeriodBucket(
+  map: Map<string, { total: number; transacciones: number }>,
+  key: string,
+  amount: number,
+) {
+  const bucket = map.get(key) || { total: 0, transacciones: 0 };
+  bucket.total += amount;
+  bucket.transacciones += 1;
+  map.set(key, bucket);
+}
+
+function mapTendenciaSeries(
+  map: Map<string, { total: number; transacciones: number }>,
+  labelFn: (periodo: string) => string,
+) {
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([periodo, v]) => ({
+      periodo,
+      label: labelFn(periodo),
+      total: Math.round(v.total * 100) / 100,
+      transacciones: v.transacciones,
+    }));
+}
+
 function matchesHourFilter(
   isoDate: string | undefined,
   hourFrom: number | null,
@@ -349,6 +430,9 @@ export async function getToteatDashboardData(
     const byDay = new Map<number, { total: number; transacciones: number }>();
     const byHour = new Map<number, { total: number; transacciones: number }>();
     const byShift = new Map<string, { total: number; transacciones: number }>();
+    const byCalendarDay = new Map<string, { total: number; transacciones: number }>();
+    const byWeek = new Map<string, { total: number; transacciones: number }>();
+    const byMonth = new Map<string, { total: number; transacciones: number }>();
     const methodMap = new Map<string, { amount: number; count: number }>();
     const productMap = new Map<string, { quantity: number; revenue: number }>();
     const clientsByOrder = new Map<string, number>();
@@ -390,6 +474,13 @@ export async function getToteatDashboardData(
         shiftBucket.total += rowTotal;
         shiftBucket.transacciones += 1;
         byShift.set(shift, shiftBucket);
+
+        const ymd = getClosedYmdLima(row.dateClosed);
+        if (ymd) {
+          bumpPeriodBucket(byCalendarDay, ymd, rowTotal);
+          bumpPeriodBucket(byWeek, mondayOfWeek(ymd), rowTotal);
+          bumpPeriodBucket(byMonth, ymd.slice(0, 7), rowTotal);
+        }
       }
 
       for (const pm of row.paymentForms || []) {
@@ -552,6 +643,11 @@ export async function getToteatDashboardData(
             transacciones: v.transacciones,
           }))
           .sort((a, b) => a.hora - b.hora),
+        tendencia: {
+          por_dia: mapTendenciaSeries(byCalendarDay, formatTendenciaDiaLabel),
+          por_semana: mapTendenciaSeries(byWeek, formatTendenciaSemanaLabel),
+          por_mes: mapTendenciaSeries(byMonth, formatTendenciaMesLabel),
+        },
       },
       top_waiters: Array.from(waitersFromRows.entries())
         .map(([waiterName, values]) => ({

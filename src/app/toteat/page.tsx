@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Loader2, RefreshCw, Store, ListOrdered, CreditCard, Package, Clock } from "lucide-react";
 import { TrendCharts, ChartsData } from "@/components/dashboard/trend-charts";
+import { SalesPeriodTrend } from "@/components/dashboard/sales-period-trend";
 import { BusinessSplitPanel } from "@/components/toteat/business-split-panel";
 import { formatSoles } from "@/lib/config/column-rules";
 import { TOTEAT_SALES_REPORT_NAME } from "@/lib/toteat/source-context";
@@ -152,6 +153,13 @@ export default function ToteatDashboardPage() {
     }, 300);
     return () => clearTimeout(t);
   }, [fetchData]);
+
+  const hasPeriodTrend = Boolean(
+    data?.charts.tendencia &&
+      (data.charts.tendencia.por_dia.length > 0 ||
+        data.charts.tendencia.por_semana.length > 0 ||
+        data.charts.tendencia.por_mes.length > 0),
+  );
 
   const hasCharts = Boolean(
     data &&
@@ -368,6 +376,18 @@ export default function ToteatDashboardPage() {
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: "var(--foreground-muted)" }}>Monto cancelado (estim.)</p>
                 <p className="text-xl font-bold tabular-nums">{formatSoles(data.cancellations.canceled_item_estimated_amount)}</p>
               </div>
+            </div>
+          )}
+
+          {hasPeriodTrend && data.charts.tendencia && (
+            <div className="rounded-xl p-4" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <h3
+                className="text-xs font-semibold uppercase tracking-widest mb-3"
+                style={{ color: "var(--foreground-muted)" }}
+              >
+                Tendencia de Ventas
+              </h3>
+              <SalesPeriodTrend data={data.charts.tendencia} />
             </div>
           )}
 
