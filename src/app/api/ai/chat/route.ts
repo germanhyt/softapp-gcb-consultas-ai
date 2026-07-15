@@ -9,8 +9,14 @@ import { buildContext } from "@/lib/ai/context-builder";
 import { DEFAULT_MODEL_ID, resolveModelId } from "@/lib/ai/models";
 import { textFromUIMessageParts } from "@/lib/ai/ui-message-text";
 import { COMPANY_NAME } from "@/lib/config/brand";
-import { AuthError, requireAuth } from "@/lib/auth/guard";
+import { validateApiKey } from "@/lib/auth/api-key";
 import { isAuthEnabled } from "@/lib/auth/config";
+import { AuthError, requireAuth } from "@/lib/auth/guard";
+import { checkRateLimit, pruneRateLimitBuckets } from "@/lib/auth/rate-limit";
+
+/** Límite por IP para consultas con API key (Hermes / agentes). */
+const API_KEY_CHAT_LIMIT = 60;
+const API_KEY_CHAT_WINDOW_MS = 60_000;
 
 const LEGACY_BRAND_RE = /\bEl Refugio\b/gi;
 
@@ -45,7 +51,40 @@ function sanitizeUIMessagesForModel(messages: UIMessage[]): UIMessage[] {
 export async function POST(req: Request) {
   try {
     if (isAuthEnabled()) {
-      await requireAuth("viewer");
+      const authHeader = req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const rawKey = authHeader.slice("Bearer ".length).trim();
+        const clientIp =
+          req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+          req.headers.get("x-real-ip") ||
+          "unknown";
+
+        pruneRateLimitBuckets();
+        const rl = checkRateLimit(`ai-chat:apikey:${clientIp}`, {
+          limit: API_KEY_CHAT_LIMIT,
+          windowMs: API_KEY_CHAT_WINDOW_MS,
+        });
+        if (!rl.allowed) {
+          return new Response(
+            JSON.stringify({ error: "Demasiadas solicitudes. Intenta de nuevo en unos segundos." }),
+            {
+              status: 429,
+              headers: {
+                "Content-Type": "application/json",
+                "Retry-After": String(rl.retryAfterSec),
+              },
+            },
+          );
+        }
+
+        const ownerId = rawKey ? await validateApiKey(rawKey) : null;
+        if (!ownerId) {
+          throw new AuthError("API key inválida o revocada", 401);
+        }
+        // Acceso concedido con rol viewer virtual (agentes externos / Hermes)
+      } else {
+        await requireAuth("viewer");
+      }
     }
 
     const body = await req.json();

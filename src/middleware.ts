@@ -6,9 +6,14 @@ import {
   isViewerBlockedApi,
   isViewerBlockedPath,
 } from "@/lib/auth/permissions";
+import { checkRateLimit, pruneRateLimitBuckets } from "@/lib/auth/rate-limit";
 import { getSessionFromRequest } from "@/lib/auth/session";
 
 const PUBLIC_PATHS = ["/login"];
+
+/** Fail-fast en edge/middleware antes de llegar al route (misma ventana que el chat). */
+const BEARER_CHAT_LIMIT = 60;
+const BEARER_CHAT_WINDOW_MS = 60_000;
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) return true;
@@ -19,9 +24,42 @@ function isPublicPath(pathname: string): boolean {
   return false;
 }
 
+function hasBearerApiKey(req: NextRequest): boolean {
+  const auth = req.headers.get("authorization");
+  return Boolean(auth?.startsWith("Bearer ") && auth.slice("Bearer ".length).trim());
+}
+
+function clientIp(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
 export async function middleware(req: NextRequest) {
   if (!isAuthEnabled()) return NextResponse.next();
   if (isPublicPath(req.nextUrl.pathname)) return NextResponse.next();
+
+  // Hermes / agentes externos: dejar pasar Bearer a /api/ai/chat
+  // (la validación de la API key la hace el route handler).
+  if (req.nextUrl.pathname.startsWith("/api/ai/chat") && hasBearerApiKey(req)) {
+    pruneRateLimitBuckets();
+    const rl = checkRateLimit(`mw:ai-chat:apikey:${clientIp(req)}`, {
+      limit: BEARER_CHAT_LIMIT,
+      windowMs: BEARER_CHAT_WINDOW_MS,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Demasiadas solicitudes. Intenta de nuevo en unos segundos." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSec) },
+        },
+      );
+    }
+    return NextResponse.next();
+  }
 
   const session = await getSessionFromRequest(req);
   if (!session) {
