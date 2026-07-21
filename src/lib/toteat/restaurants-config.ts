@@ -9,6 +9,11 @@ export interface ToteatRestaurantConfig {
   timeoutMs: number;
 }
 
+export interface ToteatApiMappingsPublic {
+  barApiId: string;
+  limanesasApiId: string;
+}
+
 interface RawRestaurantConfig {
   id?: unknown;
   key?: unknown;
@@ -112,4 +117,32 @@ export function resolveToteatRestaurant(id?: string | null): ToteatRestaurantCon
 
 export function getToteatRestaurantsPublic() {
   return getToteatRestaurants().map((r) => ({ id: r.id, name: r.name }));
+}
+
+function findRestaurantByKeywords(
+  restaurants: ToteatRestaurantConfig[],
+  keywords: string[],
+): ToteatRestaurantConfig | null {
+  const loweredKeywords = keywords.map((k) => k.toLowerCase());
+  for (const restaurant of restaurants) {
+    const search = `${restaurant.id} ${restaurant.name}`.toLowerCase();
+    if (loweredKeywords.some((k) => search.includes(k))) return restaurant;
+  }
+  return null;
+}
+
+export function getToteatApiMappingsPublic(): ToteatApiMappingsPublic {
+  const restaurants = getToteatRestaurants();
+  const limanesasSourceId = toSafeId(process.env.TOTEAT_LIMANESAS_SOURCE_RESTAURANT_ID || "");
+  const barAggregateId = toSafeId(process.env.TOTEAT_LIMANESAS_AGGREGATE_FOR_RESTAURANT_ID || "");
+
+  const byId = (id: string) => restaurants.find((r) => r.id === id) || null;
+  const barByHeuristic =
+    findRestaurantByKeywords(restaurants, ["bar-refugio", "bar refugio", "refugio", " bar "]) || restaurants[0] || null;
+  const limanesasByHeuristic = findRestaurantByKeywords(restaurants, ["limanesas", "limanesa"]);
+
+  const barApiId = byId(barAggregateId)?.id || barByHeuristic?.id || "";
+  const limanesasApiId = byId(limanesasSourceId)?.id || limanesasByHeuristic?.id || "";
+
+  return { barApiId, limanesasApiId };
 }

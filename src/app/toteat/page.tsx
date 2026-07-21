@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Loader2, RefreshCw, Store, ListOrdered, CreditCard, Package, Clock } from "lucide-react";
 import { TrendCharts, ChartsData } from "@/components/dashboard/trend-charts";
 import { SalesPeriodTrend } from "@/components/dashboard/sales-period-trend";
@@ -65,7 +65,14 @@ interface ToteatRestaurantOption {
   name: string;
 }
 
+interface ToteatApiMappings {
+  barApiId: string;
+  limanesasApiId: string;
+}
+
 type ShiftPreset = "all_day" | "morning_shift" | "afternoon_shift" | "night_shift";
+type BusinessPreset = "all" | "refugio" | "sisa" | "limanesas";
+type ApiModePreset = "all" | "bar" | "limanesas";
 
 function defaultRange() {
   const now = new Date();
@@ -82,11 +89,22 @@ export default function ToteatDashboardPage() {
   const [startDate, setStartDate] = useState(defaults.startDate);
   const [endDate, setEndDate] = useState(defaults.endDate);
   const [restaurants, setRestaurants] = useState<ToteatRestaurantOption[]>([]);
-  const [selectedRestaurant, setSelectedRestaurant] = useState("");
+  const [apiMappings, setApiMappings] = useState<ToteatApiMappings>({
+    barApiId: "",
+    limanesasApiId: "",
+  });
+  const [selectedBusiness, setSelectedBusiness] = useState<BusinessPreset>("all");
+  const [selectedApiMode, setSelectedApiMode] = useState<ApiModePreset>("all");
   const [shiftPreset, setShiftPreset] = useState<ShiftPreset>("all_day");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ToteatDashboardResponse | null>(null);
+  const activeRequestRef = useRef<AbortController | null>(null);
+  const requestVersionRef = useRef(0);
+  const barApiId = apiMappings.barApiId || restaurants[0]?.id || "";
+  const limanesasApiId = apiMappings.limanesasApiId || "";
+  const hasBarApi = Boolean(barApiId);
+  const hasLimanesasApi = Boolean(limanesasApiId);
 
   const hourRangeByPreset: Record<ShiftPreset, { from: string; to: string }> = {
     all_day: { from: "", to: "" },
@@ -104,13 +122,14 @@ export default function ToteatDashboardPage() {
   useEffect(() => {
     fetch("/api/toteat/restaurants")
       .then((r) => r.json())
-      .then((j: { restaurants?: ToteatRestaurantOption[] }) => {
+      .then((j: { restaurants?: ToteatRestaurantOption[]; mappings?: Partial<ToteatApiMappings> }) => {
         const list = Array.isArray(j.restaurants) ? j.restaurants : [];
         setRestaurants(list);
-        if (list.length > 0) {
-          setSelectedRestaurant((prev) => prev || list[0].id);
-          return;
-        }
+        setApiMappings({
+          barApiId: typeof j.mappings?.barApiId === "string" ? j.mappings.barApiId : "",
+          limanesasApiId: typeof j.mappings?.limanesasApiId === "string" ? j.mappings.limanesasApiId : "",
+        });
+        if (list.length > 0) return;
         setLoading(false);
         setError("No hay restaurantes Toteat configurados.");
       })
@@ -123,36 +142,83 @@ export default function ToteatDashboardPage() {
 
   const fetchData = useCallback(async () => {
     if (!startDate || !endDate || startDate > endDate) return;
-    if (!selectedRestaurant) return;
+    if (!restaurants.length) return;
+    requestVersionRef.current += 1;
+    const requestVersion = requestVersionRef.current;
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
     setLoading(true);
     setError(null);
     try {
+      let restaurantId = "";
+      if (selectedApiMode === "bar" || selectedApiMode === "all") {
+        restaurantId = barApiId;
+      } else if (selectedApiMode === "limanesas") {
+        restaurantId = limanesasApiId;
+      }
+      if (!restaurantId && selectedApiMode === "all") {
+        restaurantId = limanesasApiId;
+      }
+      if (!restaurantId) {
+        throw new Error(
+          selectedApiMode === "limanesas"
+            ? "No hay API de Limanesas configurada (revisa IDs en TOTEAT_RESTAURANTS_JSON y TOTEAT_LIMANESAS_SOURCE_RESTAURANT_ID)."
+            : "No hay API Toteat configurada para la selección actual.",
+        );
+      }
+
       const params = new URLSearchParams({
         start_date: startDate,
         end_date: endDate,
-        restaurant: selectedRestaurant,
+        restaurant: restaurantId,
+        api_mode: selectedApiMode,
+        business_scope: selectedBusiness,
       });
       const range = hourRangeByPreset[shiftPreset];
       if (range.from !== "") params.set("hour_from", range.from);
       if (range.to !== "") params.set("hour_to", range.to);
-      const res = await fetch(`/api/toteat/dashboard?${params.toString()}`);
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const res = await fetch(`/api/toteat/dashboard?${params.toString()}`, {
+        signal: controller.signal,
+      });
+      if (requestVersion !== requestVersionRef.current) return;
       const json = (await res.json()) as ToteatDashboardResponse;
+      if (!res.ok) throw new Error(json.error || `Error ${res.status}`);
       if (json.error) throw new Error(json.error);
       setData(json);
     } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
+      if (requestVersion !== requestVersionRef.current) return;
       setError(String(e));
     } finally {
-      setLoading(false);
+      if (requestVersion === requestVersionRef.current) {
+        setLoading(false);
+        activeRequestRef.current = null;
+      }
     }
-  }, [startDate, endDate, selectedRestaurant, shiftPreset]);
+  }, [
+    startDate,
+    endDate,
+    restaurants.length,
+    barApiId,
+    limanesasApiId,
+    selectedApiMode,
+    selectedBusiness,
+    shiftPreset,
+  ]);
 
   useEffect(() => {
     const t = setTimeout(() => {
       fetchData();
-    }, 300);
+    }, 500);
     return () => clearTimeout(t);
   }, [fetchData]);
+
+  useEffect(() => {
+    return () => {
+      activeRequestRef.current?.abort();
+    };
+  }, []);
 
   const hasPeriodTrend = Boolean(
     data?.charts.tendencia &&
@@ -218,25 +284,37 @@ export default function ToteatDashboardPage() {
           className="text-xs rounded-lg px-2 py-1.5"
           style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", color: "var(--foreground)" }}
         />
-        {restaurants.length > 0 && (
-          <>
-            <span className="text-[10px] font-bold uppercase tracking-widest ml-2" style={{ color: "var(--foreground-subtle)" }}>
-              Restaurante:
-            </span>
-            <select
-              value={selectedRestaurant}
-              onChange={(e) => setSelectedRestaurant(e.target.value)}
-              className="text-xs rounded-lg px-2 py-1.5"
-              style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", color: "var(--foreground)" }}
-            >
-              {restaurants.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
+        <span className="text-[10px] font-bold uppercase tracking-widest ml-2" style={{ color: "var(--foreground-subtle)" }}>
+          Restaurante:
+        </span>
+        <select
+          value={selectedBusiness}
+          onChange={(e) => setSelectedBusiness(e.target.value as BusinessPreset)}
+          className="text-xs rounded-lg px-2 py-1.5"
+          style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", color: "var(--foreground)" }}
+        >
+          <option value="all">Todos (por defecto)</option>
+          <option value="refugio">Bar Refugio</option>
+          <option value="sisa">Sisa</option>
+          <option value="limanesas">Limanesas</option>
+        </select>
+        <span className="text-[10px] font-bold uppercase tracking-widest ml-2" style={{ color: "var(--foreground-subtle)" }}>
+          API:
+        </span>
+        <select
+          value={selectedApiMode}
+          onChange={(e) => setSelectedApiMode(e.target.value as ApiModePreset)}
+          className="text-xs rounded-lg px-2 py-1.5"
+          style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", color: "var(--foreground)" }}
+        >
+          <option value="all">Todas (por defecto)</option>
+          <option value="bar" disabled={!hasBarApi}>
+            Bar Refugio
+          </option>
+          <option value="limanesas" disabled={!hasLimanesasApi}>
+            Limanesas
+          </option>
+        </select>
         <span className="text-[10px] font-bold uppercase tracking-widest ml-2 flex items-center gap-1" style={{ color: "var(--foreground-subtle)" }}>
           <Clock className="h-3 w-3" />
           Turno:
@@ -277,7 +355,23 @@ export default function ToteatDashboardPage() {
         <>
           {data.restaurant?.name && (
             <div className="text-xs font-semibold" style={{ color: "var(--foreground-muted)" }}>
-              Restaurante seleccionado: {data.restaurant.name}
+              Restaurante seleccionado:{" "}
+              {selectedBusiness === "all"
+                ? "Todos"
+                : selectedBusiness === "refugio"
+                ? "Bar Refugio"
+                : selectedBusiness === "sisa"
+                  ? "Sisa"
+                  : "Limanesas"}
+              <span>
+                {" "}· API:{" "}
+                {selectedApiMode === "all"
+                  ? "Todas"
+                  : selectedApiMode === "bar"
+                    ? "Bar Refugio"
+                    : "Limanesas"}
+              </span>
+              <span> · Fuente actual: {data.restaurant.name}</span>
               {(data.applied_filters?.hour_from != null || data.applied_filters?.hour_to != null) && (
                 <span>
                   {" "}· Turno aplicado ({data.applied_filters.timezone || "America/Lima"}):{" "}

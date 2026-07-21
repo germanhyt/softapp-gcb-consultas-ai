@@ -1,4 +1,4 @@
-import { resolveToteatRestaurant } from "@/lib/toteat/restaurants-config";
+import { resolveToteatRestaurant, type ToteatRestaurantConfig } from "@/lib/toteat/restaurants-config";
 import type { ChartsData } from "@/components/dashboard/trend-charts";
 
 const DIAS_LABEL: Record<number, string> = {
@@ -54,6 +54,8 @@ export interface ToteatDashboardParams {
   restaurantId?: string | null;
   hourFrom?: number | null;
   hourTo?: number | null;
+  apiMode?: "all" | "bar" | "limanesas";
+  businessScope?: "all" | "refugio" | "sisa" | "limanesas";
 }
 
 export interface ToteatDashboardData {
@@ -346,10 +348,167 @@ function findFullyCompensatedOrderIds(rows: ToteatSaleRow[]): Set<string> {
   return fullyCompensated;
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterMs(response: Response): number | null {
+  const raw = response.headers.get("retry-after");
+  if (!raw) return null;
+  const asSeconds = Number(raw);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) return Math.max(0, Math.round(asSeconds * 1000));
+  const asDate = Date.parse(raw);
+  if (Number.isNaN(asDate)) return null;
+  return Math.max(0, asDate - Date.now());
+}
+
+function compactToUtcDate(ymdCompact: string): Date {
+  const y = Number(ymdCompact.slice(0, 4));
+  const m = Number(ymdCompact.slice(4, 6));
+  const d = Number(ymdCompact.slice(6, 8));
+  return new Date(Date.UTC(y, Math.max(0, m - 1), d));
+}
+
+function utcDateToCompact(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+}
+
+function splitCompactRangeInHalf(ini: string, end: string): Array<{ ini: string; end: string }> {
+  if (ini >= end) return [{ ini, end }];
+  const iniDate = compactToUtcDate(ini);
+  const endDate = compactToUtcDate(end);
+  const totalDays = Math.floor((endDate.getTime() - iniDate.getTime()) / 86_400_000) + 1;
+  if (totalDays <= 1) return [{ ini, end }];
+  const leftDays = Math.floor(totalDays / 2);
+  const leftEndDate = new Date(iniDate.getTime());
+  leftEndDate.setUTCDate(leftEndDate.getUTCDate() + leftDays - 1);
+  const rightStartDate = new Date(leftEndDate.getTime());
+  rightStartDate.setUTCDate(rightStartDate.getUTCDate() + 1);
+  return [
+    { ini, end: utcDateToCompact(leftEndDate) },
+    { ini: utcDateToCompact(rightStartDate), end },
+  ];
+}
+
+async function fetchSalesChunkWithRetry(
+  cfg: ToteatRestaurantConfig,
+  baseParams: URLSearchParams,
+  ini: string,
+  end: string,
+  depth = 0,
+  options?: {
+    maxAttempts?: number;
+    baseBackoffMs?: number;
+    maxBackoffMs?: number;
+  },
+): Promise<ToteatSaleRow[]> {
+  const salesUrl = `${cfg.baseUrl}/sales?${baseParams.toString()}&ini=${ini}&end=${end}`;
+  const maxAttempts = options?.maxAttempts ?? 4;
+  const baseBackoffMs = options?.baseBackoffMs ?? 1200;
+  const maxBackoffMs = options?.maxBackoffMs ?? 20000;
+  let last429 = false;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const chunkController = new AbortController();
+    const chunkTimeout = setTimeout(() => chunkController.abort(), cfg.timeoutMs);
+
+    let salesRes: Response;
+    try {
+      salesRes = await fetch(salesUrl, { signal: chunkController.signal });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(
+          `Timeout al consultar API Toteat (${cfg.timeoutMs}ms por bloque de ${ini}-${end}). Reduce el rango o aumenta TOTEAT_TIMEOUT_MS.`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(chunkTimeout);
+    }
+
+    if (salesRes.status === 429) {
+      last429 = true;
+      if (attempt < maxAttempts) {
+        const retryAfterMs = parseRetryAfterMs(salesRes);
+        const backoffMs = retryAfterMs ?? baseBackoffMs * attempt;
+        await wait(Math.min(Math.max(backoffMs, 300), maxBackoffMs));
+        continue;
+      }
+      break;
+    }
+    if (salesRes.status >= 500 && attempt < maxAttempts) {
+      await wait(600 * attempt);
+      continue;
+    }
+    if (!salesRes.ok) throw new Error(`Toteat sales error ${salesRes.status}`);
+
+    const salesJson = (await salesRes.json()) as { ok?: boolean; msg?: unknown; data?: ToteatSaleRow[] };
+    if (!salesJson.ok) throw new Error(`Toteat sales: ${String(salesJson.msg || "respuesta inválida")}`);
+    return Array.isArray(salesJson.data) ? salesJson.data : [];
+  }
+
+  if (last429 && ini < end && depth < 8) {
+    const subRanges = splitCompactRangeInHalf(ini, end);
+    if (subRanges.length > 1) {
+      const rows: ToteatSaleRow[] = [];
+      for (const sub of subRanges) {
+        await wait(220);
+        const subRows = await fetchSalesChunkWithRetry(cfg, baseParams, sub.ini, sub.end, depth + 1, options);
+        rows.push(...subRows);
+      }
+      return rows;
+    }
+  }
+
+  if (last429) {
+    throw new Error(
+      `Toteat sales error 429 (rate limit en ${ini}-${end}). Reduce el rango o reintenta en unos minutos.`,
+    );
+  }
+  throw new Error(`Toteat sales error en ${ini}-${end}`);
+}
+
+async function fetchSalesRowsForRestaurant(
+  cfg: ToteatRestaurantConfig,
+  startDate: string,
+  endDate: string,
+  options?: {
+    maxAttempts?: number;
+    baseBackoffMs?: number;
+    maxBackoffMs?: number;
+  },
+): Promise<ToteatSaleRow[]> {
+  const baseParams = new URLSearchParams({
+    xir: cfg.xir,
+    xil: cfg.xil,
+    xiu: cfg.xiu,
+    xapitoken: cfg.xapitoken,
+  });
+  const ranges = splitDateRange(startDate, endDate, 15);
+  const rows: ToteatSaleRow[] = [];
+
+  for (const r of ranges) {
+    const chunkRows = await fetchSalesChunkWithRetry(cfg, baseParams, r.ini, r.end, 0, options);
+    rows.push(...chunkRows);
+  }
+
+  return rows;
+}
+
 export async function getToteatDashboardData(
   params: ToteatDashboardParams,
 ): Promise<ToteatDashboardData> {
-  const { startDate, endDate, restaurantId, hourFrom = null, hourTo = null } = params;
+  const {
+    startDate,
+    endDate,
+    restaurantId,
+    hourFrom = null,
+    hourTo = null,
+    apiMode = "all",
+    businessScope = "all",
+  } = params;
   const cfg = resolveToteatRestaurant(restaurantId);
   if (!cfg) {
     throw new Error("No hay restaurantes Toteat configurados.");
@@ -362,25 +521,59 @@ export async function getToteatDashboardData(
     xapitoken: cfg.xapitoken,
   });
   const ranges = splitDateRange(startDate, endDate, 15);
+  const limanesasSourceRestaurantId = (process.env.TOTEAT_LIMANESAS_SOURCE_RESTAURANT_ID || "").trim();
+  const limanesasAggregateForRestaurantId = (
+    process.env.TOTEAT_LIMANESAS_AGGREGATE_FOR_RESTAURANT_ID || ""
+  ).trim();
+  const shouldAggregateExternalLimanesas =
+    apiMode === "all" &&
+    Boolean(limanesasSourceRestaurantId) &&
+    limanesasSourceRestaurantId !== cfg.id &&
+    (!limanesasAggregateForRestaurantId || limanesasAggregateForRestaurantId === cfg.id);
+  const shouldFetchCancellations = apiMode !== "limanesas";
+  const forceAllRowsToLimanesas = apiMode === "limanesas";
+  const primarySalesRetryOptions =
+    apiMode === "limanesas"
+      ? {
+          maxAttempts: 6,
+          baseBackoffMs: 2000,
+          maxBackoffMs: 45000,
+        }
+      : undefined;
 
   try {
     const allRows: ToteatSaleRow[] = [];
     const cancellationRows: ToteatCancellationRow[] = [];
+    let externalLimanesasRows: ToteatSaleRow[] = [];
+    let externalLimanesasName = "";
 
     for (const r of ranges) {
-      const salesUrl = `${cfg.baseUrl}/sales?${baseParams.toString()}&ini=${r.ini}&end=${r.end}`;
       const cancellationUrl = `${cfg.baseUrl}/orders/cancellation-report?${baseParams.toString()}&start_date=${formatYmdCompactToDashed(r.ini)}&end_date=${formatYmdCompactToDashed(r.end)}`;
-
-      const chunkController = new AbortController();
-      const chunkTimeout = setTimeout(() => chunkController.abort(), cfg.timeoutMs);
-
-      let salesRes: Response;
       let cancellationRes: Response | null;
       try {
-        [salesRes, cancellationRes] = await Promise.all([
-          fetch(salesUrl, { signal: chunkController.signal }),
-          fetch(cancellationUrl, { signal: chunkController.signal }).catch(() => null),
-        ]);
+        const salesRows = await fetchSalesChunkWithRetry(
+          cfg,
+          baseParams,
+          r.ini,
+          r.end,
+          0,
+          primarySalesRetryOptions,
+        );
+        const cancellationResponse = shouldFetchCancellations
+          ? await (async () => {
+              const cancellationController = new AbortController();
+              const cancellationTimeout = setTimeout(() => cancellationController.abort(), cfg.timeoutMs);
+              try {
+                return await fetch(cancellationUrl, {
+                  signal: cancellationController.signal,
+                }).catch(() => null);
+              } finally {
+                clearTimeout(cancellationTimeout);
+              }
+            })()
+          : null;
+        allRows.push(...salesRows);
+        cancellationRes = cancellationResponse;
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
           throw new Error(
@@ -388,14 +581,7 @@ export async function getToteatDashboardData(
           );
         }
         throw err;
-      } finally {
-        clearTimeout(chunkTimeout);
       }
-
-      if (!salesRes.ok) throw new Error(`Toteat sales error ${salesRes.status}`);
-      const salesJson = (await salesRes.json()) as { ok?: boolean; msg?: unknown; data?: ToteatSaleRow[] };
-      if (!salesJson.ok) throw new Error(`Toteat sales: ${String(salesJson.msg || "respuesta inválida")}`);
-      if (Array.isArray(salesJson.data)) allRows.push(...salesJson.data);
 
       if (cancellationRes?.ok) {
         const cancellationJson = (await cancellationRes.json()) as {
@@ -404,6 +590,21 @@ export async function getToteatDashboardData(
         };
         if (cancellationJson.ok && Array.isArray(cancellationJson.data)) {
           cancellationRows.push(...cancellationJson.data);
+        }
+      }
+    }
+
+    if (shouldAggregateExternalLimanesas) {
+      const limanesasCfg = resolveToteatRestaurant(limanesasSourceRestaurantId);
+      if (limanesasCfg) {
+        try {
+          externalLimanesasRows = await fetchSalesRowsForRestaurant(limanesasCfg, startDate, endDate);
+          externalLimanesasName = limanesasCfg.name;
+        } catch (err) {
+          console.error(
+            `[toteat/dashboard] No se pudo sumar API Limanesas (${limanesasCfg.id}):`,
+            err,
+          );
         }
       }
     }
@@ -500,17 +701,51 @@ export async function getToteatDashboardData(
         current.revenue += payed;
         productMap.set(name, current);
 
-        const biz = classifyByCategory(row.zoneName, p.hierarchyName, p.name);
+        const biz = forceAllRowsToLimanesas
+          ? "Limanesas"
+          : classifyByCategory(row.zoneName, p.hierarchyName, p.name);
         businessTotals[biz] += payed;
         businessLines[biz] += quantity > 0 ? quantity : 1;
         if (row.orderId != null) businessOrders[biz].add(String(row.orderId));
       }
 
       if (!row.products || row.products.length === 0) {
-        const fallbackBiz: InternalBusiness = isCafeteriaZone(row.zoneName) ? "Sisa" : "Refugio";
+        const fallbackBiz: InternalBusiness = forceAllRowsToLimanesas
+          ? "Limanesas"
+          : isCafeteriaZone(row.zoneName)
+            ? "Sisa"
+            : "Refugio";
         businessTotals[fallbackBiz] += safeNum(row.total);
         businessLines[fallbackBiz] += 1;
         if (row.orderId != null) businessOrders[fallbackBiz].add(String(row.orderId));
+      }
+    }
+
+    if (externalLimanesasRows.length > 0) {
+      const hourFilteredExternalRows = externalLimanesasRows.filter((row) =>
+        matchesHourFilter(row.dateClosed, hourFrom, hourTo),
+      );
+      const compensatedExternalOrderIds = findFullyCompensatedOrderIds(hourFilteredExternalRows);
+      const externalEffectiveRows = hourFilteredExternalRows.filter((row) => {
+        if (row.orderId == null) return true;
+        return !compensatedExternalOrderIds.has(String(row.orderId));
+      });
+      const externalPrefix = limanesasSourceRestaurantId || "limanesas";
+
+      for (const row of externalEffectiveRows) {
+        businessTotals.Limanesas += safeNum(row.payed);
+        if (row.orderId != null) {
+          businessOrders.Limanesas.add(`${externalPrefix}:${String(row.orderId)}`);
+        }
+
+        if (Array.isArray(row.products) && row.products.length > 0) {
+          for (const p of row.products) {
+            const quantity = safeNum(p.quantity);
+            businessLines.Limanesas += quantity > 0 ? quantity : 1;
+          }
+        } else {
+          businessLines.Limanesas += 1;
+        }
       }
     }
 
@@ -523,7 +758,25 @@ export async function getToteatDashboardData(
       waitersFromRows.set(key, current);
     }
 
-    const businessSplitTotal = businessTotals.Sisa + businessTotals.Limanesas + businessTotals.Refugio;
+    const scopedBusinessTotals: Record<InternalBusiness, number> = { ...businessTotals };
+    const scopedBusinessLines: Record<InternalBusiness, number> = { ...businessLines };
+    const scopedBusinessOrders: Record<InternalBusiness, Set<string>> = {
+      Sisa: new Set(businessOrders.Sisa),
+      Limanesas: new Set(businessOrders.Limanesas),
+      Refugio: new Set(businessOrders.Refugio),
+    };
+    if (businessScope !== "all") {
+      const selectedBusiness: InternalBusiness =
+        businessScope === "sisa" ? "Sisa" : businessScope === "limanesas" ? "Limanesas" : "Refugio";
+      for (const business of ["Sisa", "Limanesas", "Refugio"] as InternalBusiness[]) {
+        if (business === selectedBusiness) continue;
+        scopedBusinessTotals[business] = 0;
+        scopedBusinessLines[business] = 0;
+        scopedBusinessOrders[business].clear();
+      }
+    }
+    const businessSplitTotal =
+      scopedBusinessTotals.Sisa + scopedBusinessTotals.Limanesas + scopedBusinessTotals.Refugio;
 
     let canceledOrderCount = 0;
     let canceledItemLines = 0;
@@ -681,17 +934,29 @@ export async function getToteatDashboardData(
           "fuera de Cafeteria: categoría 'Aperitivo Cafetería Sisa' o categoría 'Sisa' => Sisa (excluye 'Sisa Bar')",
           "resto => Refugio (Bar Refugio)",
           "monto asignado por línea usando products[].payed (estimado operativo)",
+          ...(externalLimanesasRows.length > 0
+            ? [
+                `se suma API propia de Limanesas (${externalLimanesasName || limanesasSourceRestaurantId}) al bloque Limanesas`,
+              ]
+            : []),
+          ...(businessScope !== "all"
+            ? [
+                `filtro de restaurante aplicado: ${
+                  businessScope === "sisa" ? "Sisa" : businessScope === "limanesas" ? "Limanesas" : "Bar Refugio"
+                }`,
+              ]
+            : []),
         ],
         by_business: (["Sisa", "Limanesas", "Refugio"] as InternalBusiness[]).map((business) => ({
           business,
-          total: Math.round(businessTotals[business] * 100) / 100,
+          total: Math.round(scopedBusinessTotals[business] * 100) / 100,
           percentage:
             businessSplitTotal > 0
-              ? Math.round((businessTotals[business] / businessSplitTotal) * 10000) / 100
+              ? Math.round((scopedBusinessTotals[business] / businessSplitTotal) * 10000) / 100
               : 0,
-          line_items: businessLines[business],
-          orders: businessOrders[business].size,
-          average_ticket: safeAverage(businessTotals[business], businessOrders[business].size),
+          line_items: scopedBusinessLines[business],
+          orders: scopedBusinessOrders[business].size,
+          average_ticket: safeAverage(scopedBusinessTotals[business], scopedBusinessOrders[business].size),
         })),
         total: Math.round(businessSplitTotal * 100) / 100,
       },

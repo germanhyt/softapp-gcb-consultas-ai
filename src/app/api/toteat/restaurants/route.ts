@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
-import { getToteatRestaurantsPublic } from "@/lib/toteat/restaurants-config";
+import { getToteatApiMappingsPublic, getToteatRestaurantsPublic } from "@/lib/toteat/restaurants-config";
 
 export async function GET() {
   try {
     const restaurants = getToteatRestaurantsPublic();
-    return NextResponse.json({ restaurants });
+    const mappings = getToteatApiMappingsPublic();
+    return NextResponse.json({ restaurants, mappings });
   } catch (error) {
     console.error("[toteat/restaurants] Error:", error);
-    return NextResponse.json({ restaurants: [] });
+    return NextResponse.json({
+      restaurants: [],
+      mappings: { barApiId: "", limanesasApiId: "" },
+    });
   }
 }

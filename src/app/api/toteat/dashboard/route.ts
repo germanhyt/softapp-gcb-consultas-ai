@@ -1,14 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToteatDashboardData } from "@/lib/toteat/dashboard-data";
+import { getToteatDashboardData, type ToteatDashboardData } from "@/lib/toteat/dashboard-data";
 import { resolveToteatRestaurant } from "@/lib/toteat/restaurants-config";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const RESPONSE_CACHE_TTL_MS = 20_000;
+const dashboardCache = new Map<string, { data: ToteatDashboardData; expiresAt: number }>();
+const inFlightByKey = new Map<string, Promise<ToteatDashboardData>>();
 
 function parseHourParam(value: string | null): number | null {
   if (value === null || value === "") return null;
   const h = Number(value);
   if (!Number.isInteger(h) || h < 0 || h > 23) return null;
   return h;
+}
+
+function parseApiMode(value: string | null): "all" | "bar" | "limanesas" {
+  if (value === "bar") return "bar";
+  if (value === "limanesas") return "limanesas";
+  return "all";
+}
+
+function parseBusinessScope(value: string | null): "all" | "refugio" | "sisa" | "limanesas" {
+  if (value === "refugio") return "refugio";
+  if (value === "sisa") return "sisa";
+  if (value === "limanesas") return "limanesas";
+  return "all";
 }
 
 export async function GET(req: NextRequest) {
@@ -19,6 +35,17 @@ export async function GET(req: NextRequest) {
   const restaurantId = sp.get("restaurant");
   const hourFrom = parseHourParam(sp.get("hour_from"));
   const hourTo = parseHourParam(sp.get("hour_to"));
+  const apiMode = parseApiMode(sp.get("api_mode"));
+  const businessScope = parseBusinessScope(sp.get("business_scope"));
+  const cacheKey = [
+    startDate,
+    endDate,
+    restaurantId || "",
+    hourFrom == null ? "" : String(hourFrom),
+    hourTo == null ? "" : String(hourTo),
+    apiMode,
+    businessScope,
+  ].join("|");
 
   if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate) || startDate > endDate) {
     return NextResponse.json({ error: "Rango de fechas inválido" }, { status: 400 });
@@ -41,16 +68,37 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const data = await getToteatDashboardData({
-      startDate,
-      endDate,
-      restaurantId,
-      hourFrom,
-      hourTo,
+    const now = Date.now();
+    const cached = dashboardCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return NextResponse.json(cached.data);
+    }
+
+    let dataPromise = inFlightByKey.get(cacheKey);
+    if (!dataPromise) {
+      dataPromise = getToteatDashboardData({
+        startDate,
+        endDate,
+        restaurantId,
+        hourFrom,
+        hourTo,
+        apiMode,
+        businessScope,
+      }).finally(() => {
+        inFlightByKey.delete(cacheKey);
+      });
+      inFlightByKey.set(cacheKey, dataPromise);
+    }
+    const data = await dataPromise;
+    dashboardCache.set(cacheKey, {
+      data,
+      expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
     });
     return NextResponse.json(data);
   } catch (e) {
     console.error("[toteat/dashboard] Error:", e);
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    const message = e instanceof Error ? e.message : String(e);
+    const status = message.includes("429") ? 429 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
