@@ -3,6 +3,16 @@ import { executeBigQuery, formatQueryResult } from "@/lib/data/bigquery-client";
 import { generateSQL } from "./sql-generator";
 import { getSystemPrompt, type ModuleType } from "./system-prompts";
 import { buildVentasScheduledReportSql } from "@/lib/data/ventas-scheduled-report-sql";
+import {
+  buildPronosticoMensualSql,
+  parsePronosticoMensual,
+} from "@/lib/data/ventas-pronostico-mensual-sql";
+import {
+  calcularPronosticoMensual,
+  calcularPronosticoPorLocatario,
+  formatPronosticoLocatarioParaIA,
+  formatPronosticoParaIA,
+} from "@/lib/data/ventas-forecast";
 import type { ChatMode } from "./chat-modes";
 import { getToteatDashboardData } from "@/lib/toteat/dashboard-data";
 import { formatToteatComparisonForAI, formatToteatForAI } from "@/lib/toteat/ai-formatter";
@@ -65,12 +75,18 @@ const MODULE_KEYWORDS: Record<ModuleType, RegExp[]> = {
     /comanda/i,
     /plato/i,
     /negocio/i,
+    /locatario/i,
     /\bbar\b/i,
     /refugio/i,
     /cuanto\s+(se\s+)?(vend|gan)/i,
     /recaud/i,
     /turno/i,
     /horario/i,
+    /\bmeta\b|metas|montos?\s*meta/i,
+    /pron[oó]stic/i,
+    /proyecci[oó]n|proyecta/i,
+    /predicci[oó]n|forecast|cierre\s*de\s*mes|fin\s*de\s*mes/i,
+    /\bevento\b|tipoingreso/i,
   ],
   estacionamiento: [
     /estacionamiento/i,
@@ -79,6 +95,7 @@ const MODULE_KEYWORDS: Record<ModuleType, RegExp[]> = {
     /parking/i,
     /auto/i,
     /cochera/i,
+    /capacidad.*lugar|lugares?\s+del\s+estacionamiento/i,
   ],
   flujo: [
     /flujo/i,
@@ -87,6 +104,8 @@ const MODULE_KEYWORDS: Record<ModuleType, RegExp[]> = {
     /visitante/i,
     /conteo/i,
     /sensor/i,
+    /puerta/i,
+    /afluencia/i,
   ],
   toteat: [],
   general: [],
@@ -197,7 +216,8 @@ function testPattern(pattern: RegExp, message: string, normalizedMsg: string): b
   return false;
 }
 
-function detectModule(message: string): ModuleType {
+/** Expuesto para tests de enrutamiento de casos de uso. */
+export function detectModule(message: string): ModuleType {
   let bestModule: ModuleType = "general";
   let bestScore = 0;
   const normalizedMsg = normalizeForMatch(message);
@@ -682,6 +702,50 @@ async function fetchBigQueryData(
         "[ContextBuilder] SQL fijo de ventas programadas falló; se usa generador SQL:",
         err,
       );
+    }
+  }
+
+  // Pronóstico mensual: ruta determinística (SQL canónico + recálculo propio),
+  // no se delega al generador de SQL.
+  if (module === "ventas") {
+    const periodo = parsePronosticoMensual(userMessage);
+    if (periodo) {
+      const bloques: string[] = [];
+      const esLocatario =
+        periodo.scope === "locatario" || periodo.scope === "todos_locatarios";
+
+      if (esLocatario) {
+        try {
+          const propio = await calcularPronosticoPorLocatario(
+            periodo.anio,
+            periodo.mes,
+            periodo.locatarioHint
+          );
+          if (propio) bloques.push(formatPronosticoLocatarioParaIA(propio));
+        } catch (err) {
+          console.error("[ContextBuilder] Pronóstico por locatario falló:", err);
+        }
+      } else {
+        try {
+          const sql = buildPronosticoMensualSql(periodo.anio, periodo.mes);
+          const result = await executeBigQuery(sql);
+          bloques.push(
+            `**Pronóstico oficial (tabla Predicciones, la misma que usa Power BI)**\n\n` +
+              `**Consulta ejecutada:** \`\`\`sql\n${sql}\n\`\`\`\n\n${formatQueryResult(result)}`
+          );
+        } catch (err) {
+          console.error("[ContextBuilder] SQL de pronóstico mensual falló:", err);
+        }
+
+        try {
+          const propio = await calcularPronosticoMensual(periodo.anio, periodo.mes);
+          if (propio) bloques.push(formatPronosticoParaIA(propio));
+        } catch (err) {
+          console.error("[ContextBuilder] Recálculo de pronóstico falló:", err);
+        }
+      }
+
+      if (bloques.length) return bloques.join("\n\n---\n\n");
     }
   }
 

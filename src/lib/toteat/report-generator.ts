@@ -21,6 +21,7 @@ export interface ToteatReportOptions {
 
 export interface ToteatReportResult {
   content: string;
+  htmlContent: string;
   csv: string;
   csvFilename: string;
   periodLabel: string;
@@ -43,6 +44,131 @@ function formatHourRange(hourFrom: number | null, hourTo: number | null): string
     return `${from} – ${to} (Lima, cruza día)`;
   }
   return `${from} – ${to} (Lima)`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildHtmlMetricCard(label: string, value: string): string {
+  return `
+    <div style="flex:1;min-width:180px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
+      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;font-weight:700;">${escapeHtml(label)}</div>
+      <div style="font-size:22px;color:#0f172a;font-weight:800;margin-top:6px;">${escapeHtml(value)}</div>
+    </div>
+  `;
+}
+
+function buildHtmlTable(headers: string[], rows: string[][]): string {
+  const thead = headers
+    .map(
+      (h) =>
+        `<th style="text-align:left;padding:8px 10px;border:1px solid #e2e8f0;background:#ecfdf5;color:#065f46;font-size:12px;">${escapeHtml(h)}</th>`,
+    )
+    .join("");
+  const tbody = rows
+    .map((r, i) => {
+      const bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+      const cells = r
+        .map(
+          (c) =>
+            `<td style="padding:7px 10px;border:1px solid #e2e8f0;background:${bg};font-size:12px;color:#0f172a;">${escapeHtml(c)}</td>`,
+        )
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+  return `<table style="width:100%;border-collapse:collapse;margin:8px 0 14px;">`
+    + `<thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
+}
+
+function buildHtmlReport(data: ToteatDashboardData, periodLabel: string): string {
+  const hourRange = formatHourRange(data.applied_filters.hour_from, data.applied_filters.hour_to);
+  const businessRows = data.business_split.by_business.map((b) => [
+    b.business,
+    formatSoles(b.total),
+    `${b.percentage.toFixed(1)}%`,
+    String(b.orders),
+    formatSoles(b.average_ticket),
+    String(b.line_items),
+  ]);
+  const waiterRows = data.top_waiters.slice(0, 6).map((w) => [
+    w.waiterName,
+    formatSoles(w.sales),
+    String(w.orders),
+  ]);
+  const paymentRows = data.payment_methods.slice(0, 8).map((m) => [
+    m.name,
+    formatSoles(m.amount),
+    String(m.count),
+  ]);
+  const productRows = data.top_products.slice(0, 8).map((p) => [
+    p.name,
+    String(p.quantity),
+    formatSoles(p.revenue),
+  ]);
+  const rulesHtml =
+    data.business_split.rules.length > 0
+      ? `<h3 style="margin:16px 0 8px;color:#065f46;font-size:15px;">Reglas y observaciones</h3>
+         <ul style="margin:8px 0 14px 18px;padding:0;color:#334155;font-size:12px;line-height:1.5;">
+           ${data.business_split.rules.map((r) => `<li style="margin:3px 0;">${escapeHtml(r)}</li>`).join("")}
+         </ul>`
+      : "";
+
+  return `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+      <h2 style="margin:0 0 8px;color:#065f46;font-size:20px;">${escapeHtml(getToteatSalesReportLabel())} — Toteat</h2>
+      <p style="margin:0 0 6px;font-size:12px;color:#475569;">${escapeHtml(getToteatSourceDescription())}</p>
+      <p style="margin:0 0 18px;font-size:12px;color:#475569;">
+        <strong>Restaurante API:</strong> ${escapeHtml(data.restaurant.name)} &nbsp;·&nbsp;
+        <strong>Periodo:</strong> ${escapeHtml(`${data.start_date} → ${data.end_date} (${periodLabel})`)} &nbsp;·&nbsp;
+        <strong>Turno:</strong> ${escapeHtml(hourRange)}
+      </p>
+
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+        ${buildHtmlMetricCard("Venta Bruta", formatSoles(data.total_sales))}
+        ${buildHtmlMetricCard("Venta Neta", formatSoles(data.total_net_sales))}
+        ${buildHtmlMetricCard("Pagado", formatSoles(data.total_paid))}
+        ${buildHtmlMetricCard("Órdenes", String(data.orders_count))}
+      </div>
+
+      <h3 style="margin:16px 0 8px;color:#065f46;font-size:15px;">Cruce interno (Refugio / Sisa / Limanesas)</h3>
+      ${buildHtmlTable(
+        ["Negocio", "Monto", "%", "Pedidos", "Ticket prom.", "Líneas"],
+        [...businessRows, ["TOTAL", formatSoles(data.business_split.total), "100%", "-", "-", "-"]],
+      )}
+
+      <h3 style="margin:16px 0 8px;color:#065f46;font-size:15px;">Resumen financiero</h3>
+      ${buildHtmlTable(
+        ["Métrica", "Valor"],
+        [
+          ["Venta bruta - descuentos", formatSoles(data.total_sales_after_discounts)],
+          ["Impuestos", formatSoles(data.total_taxes)],
+          ["Descuentos", formatSoles(data.total_discounts)],
+          ["Propinas", formatSoles(data.total_gratuity)],
+          ["Pagos / cierres", String(data.payments_count)],
+          ["Comensales", String(data.clients_count || 0)],
+          ["Ticket promedio (bruto)", formatSoles(data.average_ticket_gross)],
+          ["Ticket promedio (neto)", formatSoles(data.average_ticket_net)],
+          ["Ticket promedio (comensal)", formatSoles(data.average_ticket_per_client)],
+        ],
+      )}
+
+      ${waiterRows.length > 0 ? `<h3 style="margin:16px 0 8px;color:#065f46;font-size:15px;">Top meseros</h3>${buildHtmlTable(["Mesero", "Ventas", "Pedidos"], waiterRows)}` : ""}
+      ${paymentRows.length > 0 ? `<h3 style="margin:16px 0 8px;color:#065f46;font-size:15px;">Medios de pago</h3>${buildHtmlTable(["Medio", "Monto", "Transacciones"], paymentRows)}` : ""}
+      ${productRows.length > 0 ? `<h3 style="margin:16px 0 8px;color:#065f46;font-size:15px;">Top productos</h3>${buildHtmlTable(["Producto", "Cantidad", "Ingreso"], productRows)}` : ""}
+      ${rulesHtml}
+
+      <p style="margin-top:14px;font-size:11px;color:#64748b;">
+        Montos del cruce interno usan <code>products[].payed</code> por línea (estimado operativo).
+      </p>
+    </div>
+  `;
 }
 
 function buildChartsSection(data: ToteatDashboardData): string[] {
@@ -303,6 +429,7 @@ export async function generateToteatScheduledReport(
 
   return {
     content: buildMarkdownReport(data, periodLabel),
+    htmlContent: buildHtmlReport(data, periodLabel),
     csv: buildCsvReport(data, periodLabel),
     csvFilename,
     periodLabel,

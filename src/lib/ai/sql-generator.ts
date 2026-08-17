@@ -7,9 +7,14 @@ type BQModule = "ventas" | "estacionamiento" | "flujo";
 
 const MODULE_HINTS: Record<BQModule, string> = {
   ventas: `
-- Usa SIEMPRE \`${BQ_PROJECT}.Ventas.sales_df\` como tabla principal de ventas.
-- Para JOIN con negocios: \`${BQ_PROJECT}.Ventas.Negocios\` usando CodigoNegocio.
-- Para categorías: \`${BQ_PROJECT}.Ventas.Categorias\` usando Producto.
+- Usa SIEMPRE \`${BQ_PROJECT}.Ventas.sales_df\` como tabla principal de ventas REALES (histórico ya ocurrido).
+- Negocios (\`${BQ_PROJECT}.Ventas.Negocios\`): detalle de locatarios de Refugio Gastronómico. JOIN por CodigoNegocio; filtrar por nombre con Negocios.Descripcion.
+- Categorias (\`${BQ_PROJECT}.Ventas.Categorias\`): detalle de categoría y productos. JOIN por Producto.
+- MontosMeta (\`${BQ_PROJECT}.Ventas.MontosMeta\`): proyección META del establecimiento completo (complejo entero). NO es venta real.
+- MontosMetaMicro (\`${BQ_PROJECT}.Ventas.MontosMetaMicro\`): proyección META por cada locatario. JOIN Negocios por CodigoNegocio. NO es venta real.
+- Predicciones (\`${BQ_PROJECT}.Ventas.Predicciones\`): forecast a nivel ESTABLECIMIENTO (sin CodigoNegocio). Columnas: Fecha, Anio, Mes(INT), Ventas, VentasProyectadas. Para fechas restantes a fin de mes usa VentasProyectadas (NO inventes columna Prediccion ni JOINees por CodigoNegocio).
+- Separación obligatoria: sales_df = real transaccional | MontosMeta/MontosMetaMicro = meta | Predicciones.VentasProyectadas = forecast a cierre.
+- TipoIngreso en sales_df: valor 'EVENTO' = ingreso por evento realizado. Para preguntas de eventos usa TipoIngreso = 'EVENTO'.
 - Fecha en sales_df es STRING con formato 'YYYY-MM-DD' (solo fecha, sin hora).
 - Hora en sales_df es STRING con formato 'HH:MM:SS' (24 horas). Ejemplo: '08:30:15', '13:45:00', '23:59:59'.
 - SIEMPRE usa LEFT(Fecha, 10) para comparar fechas: LEFT(Fecha, 10) = 'YYYY-MM-DD'
@@ -30,7 +35,19 @@ const MODULE_HINTS: Record<BQModule, string> = {
 - Bosque Mágico: solo cuando Cliente/Producto contiene "bosque m" o "cajita bosque" (no cócteles "del bosque").
 - Fidelio: canal real; excluir líneas de descuento/promoción en Producto.
 - Para presupuesto vs real: JOIN \`${BQ_PROJECT}.Ventas.Presupuesto\` por CodigoNegocio y mes.
-- Metas globales: \`${BQ_PROJECT}.Ventas.MontosMeta\`. Pronósticos: \`${BQ_PROJECT}.Ventas.Pronostico\`, \`${BQ_PROJECT}.Ventas.Predicciones\`.
+- Cumplimiento meta global: SUM(sales_df.Monto) vs SUM(MontosMeta.MontoMeta) del mismo periodo.
+- Cumplimiento meta por locatario: consulta COMPACTA. Ejemplo (filtrar por Fecha, Mes es español):
+  SELECT COALESCE(n.Descripcion, m.TipoNegocio) AS locatario, ROUND(SUM(m.MontoMeta),2) AS meta
+  FROM \`${BQ_PROJECT}.Ventas.MontosMetaMicro\` m
+  LEFT JOIN \`${BQ_PROJECT}.Ventas.Negocios\` n ON m.CodigoNegocio = n.CodigoNegocio
+  WHERE m.Fecha BETWEEN DATE_TRUNC(CURRENT_DATE('America/Lima'), MONTH)
+    AND LAST_DAY(CURRENT_DATE('America/Lima'))
+  GROUP BY locatario
+  ORDER BY meta DESC
+  LIMIT 200
+- En MontosMeta/MontosMetaMicro el Mes es STRING en español ('Enero','Agosto',...). En Predicciones, Mes es INTEGER (1-12) y Anio INTEGER.
+- Cierre de mes / proyección restante: FROM Predicciones WHERE Fecha > CURRENT_DATE('America/Lima') AND Fecha <= LAST_DAY(...) ; SELECT Fecha, VentasProyectadas. No uses CodigoNegocio con Predicciones.
+- Pronóstico mensual = venta real acumulada + SUM(VentasProyectadas) de los días restantes. Determina el corte con MAX de la fecha con datos en sales_df (la carga es semanal, NO asumas que llega hasta hoy) y proyecta solo las fechas posteriores a ese corte.
 - IMPORTANTE: Cuando el usuario mencione "bar", "el bar", "del bar" se refiere al negocio "BAR REFUGIO". SIEMPRE filtra con: UPPER(COALESCE(n.Descripcion, '')) LIKE '%BAR%'
 - Para ventas por negocio: agrupar por CodigoNegocio y hacer JOIN con Negocios.Descripcion.
 - Si el usuario pide ventas de un negocio específico, SIEMPRE haz JOIN con Negocios y filtra por Descripcion.
@@ -46,9 +63,10 @@ const MODULE_HINTS: Record<BQModule, string> = {
   LIMIT 200
 `,
   estacionamiento: `
-- Tabla principal de movimientos: \`${BQ_PROJECT}.Estacionamiento.Registro\`
+- Tabla de movimientos: \`${BQ_PROJECT}.Estacionamiento.Registro\` (entradas/salidas).
+- Catálogo de zonas: \`${BQ_PROJECT}.Estacionamiento.Lugares\` (nombre_lugar, capacidad_maxima).
 - tipo_camara = 'entrada' para entradas, 'salida' para salidas.
-- JOIN con Lugares por codigo_lugar para nombre de zona.
+- JOIN Registro ↔ Lugares por codigo_lugar para nombre de zona y capacidad.
 - Vehículos únicos: \`${BQ_PROJECT}.Estacionamiento.Vehiculos\`
 - Tarifas: \`${BQ_PROJECT}.Estacionamiento.Tarifas_horarias\`, \`${BQ_PROJECT}.Estacionamiento.Tarifas_excepcionales\`
 - Visitantes/proveedores: \`${BQ_PROJECT}.Estacionamiento.Visitantes_proveedores\`
@@ -56,11 +74,12 @@ const MODULE_HINTS: Record<BQModule, string> = {
 - Fecha es tipo DATE, hora es tipo TIME.
 `,
   flujo: `
-- Para flujo por zona: \`${BQ_PROJECT}.flujo_de_personas.Personas_por_zonas\`
-- Para entradas/salidas por puerta: \`${BQ_PROJECT}.flujo_de_personas.Total_Puertas_Hora\`
+- Personas_por_zonas (\`${BQ_PROJECT}.flujo_de_personas.Personas_por_zonas\`): afluencia por zona (Region) y hora.
+- Total_Puertas_Hora (\`${BQ_PROJECT}.flujo_de_personas.Total_Puertas_Hora\`): entradas/salidas por puerta y hora.
 - Fecha es tipo DATE, Hora es tipo TIME.
 - dia_semana: 'Lunes', 'Martes', etc.
-- Para total de visitantes: SUM(Personas) o SUM(Entradas).
+- Visitantes/ingresos al complejo: SUM(Entradas) en Total_Puertas_Hora.
+- Afluencia por zona: SUM(Personas) en Personas_por_zonas. No mezclar ambas métricas como si fueran lo mismo.
 `,
 };
 

@@ -133,8 +133,13 @@ export function ScheduledReportTasksSettings() {
     fetchTasks();
     fetch("/api/toteat/restaurants")
       .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setToteatRestaurants(data);
+      .then((data: { restaurants?: ToteatRestaurantOption[] } | ToteatRestaurantOption[]) => {
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.restaurants)
+            ? data.restaurants
+            : [];
+        setToteatRestaurants(list);
       })
       .catch(() => {});
   }, [fetchTasks]);
@@ -324,12 +329,13 @@ export function ScheduledReportTasksSettings() {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Define expresión cron (cuándo se envía), destinatarios y activa el envío automático. En tareas
-        de <strong>ventas</strong> o <strong>toteat</strong> puedes elegir el <strong>periodo de datos</strong>{" "}
-        (qué fechas se analizan; zona Lima). Las tareas <strong>toteat</strong> envían el{" "}
-        <strong>reporte de ventas Bar Refugio</strong> desde Toteat (cruce interno, ticket promedio y CSV
-        adjunto). Puedes ejecutar en el momento con o sin correo; si rellenas destinatarios aquí,
-        se usan aunque no hayas pulsado Guardar.
+        Define expresión cron (cuándo se envía, zona <strong>America/Lima</strong>), destinatarios y
+        activa el envío automático. En tareas de <strong>ventas</strong> o <strong>toteat</strong>{" "}
+        puedes elegir el <strong>periodo de datos</strong> (qué fechas se analizan; zona Lima). Las
+        tareas <strong>toteat</strong> envían el{" "}
+        <strong>reporte diario Toteat</strong> en formato de correo ejecutivo (resumen visual + tablas
+        clave + CSV adjunto). Puedes ejecutar en el momento con o sin correo; si rellenas
+        destinatarios aquí, se usan aunque no hayas pulsado Guardar.
       </p>
 
       {banner && (
@@ -429,7 +435,9 @@ export function ScheduledReportTasksSettings() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Expresión cron</label>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Expresión cron (America/Lima)
+                    </label>
                     <input
                       type="text"
                       value={d.cron}

@@ -14,9 +14,10 @@ function parseHourParam(value: string | null): number | null {
   return h;
 }
 
-function parseApiMode(value: string | null): "all" | "bar" | "limanesas" {
+function parseApiMode(value: string | null): "all" | "bar" | "limanesas" | "sisa" {
   if (value === "bar") return "bar";
   if (value === "limanesas") return "limanesas";
+  if (value === "sisa") return "sisa";
   return "all";
 }
 

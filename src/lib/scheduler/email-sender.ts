@@ -8,6 +8,7 @@ interface EmailOptions {
   subject: string;
   htmlContent: string;
   taskName: string;
+  contentFormat?: "markdown" | "html";
   attachments?: Array<{
     filename: string;
     content: string | Buffer;
@@ -59,9 +60,14 @@ function markdownToHtml(markdown: string): string {
   return html;
 }
 
-function buildEmailTemplate(content: string, taskName: string, model: string): string {
+function buildEmailTemplate(
+  content: string,
+  taskName: string,
+  model: string,
+  contentFormat: "markdown" | "html" = "markdown",
+): string {
   const now = new Date().toLocaleString("es-PE", { timeZone: "America/Lima" });
-  const bodyHtml = markdownToHtml(content);
+  const bodyHtml = contentFormat === "html" ? content : markdownToHtml(content);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -106,7 +112,15 @@ function buildEmailTemplate(content: string, taskName: string, model: string): s
 }
 
 export async function sendReportEmail(options: EmailOptions & { model?: string }): Promise<boolean> {
-  const { to, subject, htmlContent, taskName, model = DEFAULT_MODEL_ID, attachments } = options;
+  const {
+    to,
+    subject,
+    htmlContent,
+    taskName,
+    model = DEFAULT_MODEL_ID,
+    attachments,
+    contentFormat = "markdown",
+  } = options;
 
   const smtp = getSmtpEffectiveConfig();
   if (!smtp) {
@@ -115,17 +129,29 @@ export async function sendReportEmail(options: EmailOptions & { model?: string }
   }
 
   try {
-    const transporter = nodemailer.createTransport({
+    // family:4 evita IPv6 (Google Workspace relay suele whitelistear solo IPv4).
+    // name = dominio del From para EHLO (requerido en smtp-relay.gmail.com sin AUTH).
+    const transportOptions: nodemailer.TransportOptions & {
+      host: string;
+      port: number;
+      secure: boolean;
+      name: string;
+      family: 4;
+      auth?: { user: string; pass: string };
+    } = {
       host: smtp.host,
       port: smtp.port,
       secure: smtp.secure,
-      auth: {
-        user: smtp.user,
-        pass: smtp.pass,
-      },
-    });
+      name: smtp.ehloName,
+      family: 4,
+    };
+    if (smtp.requireAuth) {
+      transportOptions.auth = { user: smtp.user, pass: smtp.pass };
+    }
 
-    const fullHtml = buildEmailTemplate(htmlContent, taskName, model);
+    const transporter = nodemailer.createTransport(transportOptions);
+
+    const fullHtml = buildEmailTemplate(htmlContent, taskName, model, contentFormat);
 
     await transporter.sendMail({
       from: smtp.from,
@@ -139,7 +165,10 @@ export async function sendReportEmail(options: EmailOptions & { model?: string }
       })),
     });
 
-    console.log(`[EmailSender] Report sent to ${to.join(", ")}`);
+    console.log(
+      `[EmailSender] Report sent to ${to.join(", ")} via ${smtp.host}` +
+        ` (${smtp.requireAuth ? "auth" : "relay"}, ehlo=${smtp.ehloName})`,
+    );
     return true;
   } catch (error) {
     console.error("[EmailSender] Failed:", error);

@@ -10,7 +10,7 @@ export async function GET() {
     console.error("[toteat/restaurants] Error:", error);
     return NextResponse.json({
       restaurants: [],
-      mappings: { barApiId: "", limanesasApiId: "" },
+      mappings: { barApiId: "", limanesasApiId: "", sisaApiId: "" },
     });
   }
 }

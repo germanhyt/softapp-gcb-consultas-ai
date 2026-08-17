@@ -50,6 +50,7 @@ interface MaskedSmtpState {
   from: string;
   maskedPass: string;
   hasPass: boolean;
+  authMode?: "login" | "relay" | "incomplete";
   ready: boolean;
 }
 
@@ -513,21 +514,31 @@ export default function SettingsPage() {
           Correo SMTP (reportes)
         </h3>
         <p className="text-xs text-muted-foreground mb-4">
-          Para Gmail: host <code className="text-[11px] bg-muted px-1 rounded">smtp.gmail.com</code>,
-          puerto <strong>587</strong>, sin SSL directo (usa STARTTLS). Usa una{" "}
-          <strong>contraseña de aplicación</strong> si tienes 2FA. Los datos se guardan en{" "}
-          <code className="text-[11px] bg-muted px-1 rounded">data/smtp-config.json</code> (no se
-          versiona).
+          <strong>Login:</strong> host{" "}
+          <code className="text-[11px] bg-muted px-1 rounded">smtp.gmail.com</code>, puerto{" "}
+          <strong>587</strong>, usuario + contraseña de aplicación.{" "}
+          <strong>Relay (Workspace, como estacionamiento):</strong> host{" "}
+          <code className="text-[11px] bg-muted px-1 rounded">smtp-relay.gmail.com</code>, puerto{" "}
+          <strong>587</strong>, deja usuario y contraseña vacíos, y pon el From (p. ej.{" "}
+          <code className="text-[11px] bg-muted px-1 rounded">sistemas@gcb.pe</code>). La IP del
+          servidor debe estar autorizada en Google Admin. Datos en{" "}
+          <code className="text-[11px] bg-muted px-1 rounded">data/smtp-config.json</code>.
         </p>
         {smtpMask && (
           <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
             {smtpMask.ready ? (
               <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium">
-                <Check className="h-3.5 w-3.5" /> Listo para enviar
+                <Check className="h-3.5 w-3.5" />{" "}
+                {smtpMask.authMode === "relay"
+                  ? "Listo (relay sin AUTH)"
+                  : "Listo para enviar (login)"}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-medium">
-                <AlertCircle className="h-3.5 w-3.5" /> Falta usuario o contraseña
+                <AlertCircle className="h-3.5 w-3.5" />{" "}
+                {smtpMask.authMode === "incomplete"
+                  ? "Usuario y contraseña deben ir juntos, o ambos vacíos (relay)"
+                  : "Falta host o remitente From"}
               </span>
             )}
           </div>
@@ -565,25 +576,32 @@ export default function SettingsPage() {
             </label>
           </div>
           <div className="sm:col-span-2">
-            <label className="text-xs font-medium text-muted-foreground">Usuario (correo)</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Usuario (vacío = relay sin AUTH)
+            </label>
             <input
               type="text"
               value={smtpUser}
               onChange={(e) => setSmtpUser(e.target.value)}
               className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
               autoComplete="username"
+              placeholder="sistemas@gcb.pe o vacío en relay"
             />
           </div>
           <div className="sm:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">
-              Contraseña o contraseña de aplicación
+              Contraseña (vacío = limpiar / relay)
             </label>
             <div className="flex gap-2 mt-1">
               <input
                 type={smtpPassVisible ? "text" : "password"}
                 value={smtpPass}
                 onChange={(e) => setSmtpPass(e.target.value)}
-                placeholder={smtpMask?.hasPass ? "Dejar máscara para mantener" : ""}
+                placeholder={
+                  smtpMask?.hasPass
+                    ? "Máscara = mantener · borrar campo = limpiar"
+                    : "Opcional en modo relay"
+                }
                 className="flex-1 px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40 font-mono"
                 autoComplete="current-password"
               />
@@ -603,13 +621,13 @@ export default function SettingsPage() {
           </div>
           <div className="sm:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">
-              Remitente &quot;From&quot; (opcional)
+              Remitente &quot;From&quot; (obligatorio en relay)
             </label>
             <input
               type="text"
               value={smtpFrom}
               onChange={(e) => setSmtpFrom(e.target.value)}
-              placeholder={smtpUser || "mismo que usuario"}
+              placeholder={smtpUser || "sistemas@gcb.pe"}
               className="mt-1 w-full px-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
             />
           </div>

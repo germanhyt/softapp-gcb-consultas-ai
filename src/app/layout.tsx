@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Hanken_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ChatShell } from "@/components/assistant/chat-shell";
-import { UserNav } from "@/components/auth/user-nav";
+import { MainNav } from "@/components/layout/main-nav";
 
 const hanken = Hanken_Grotesk({
   subsets: ["latin"],
@@ -23,17 +23,6 @@ export const metadata: Metadata = {
   title: `${PRODUCT_NAME} · Asistente Inteligente`,
   description: `Asistente inteligente para ${COMPANY_NAME} - Conciliación, Ventas, Estacionamiento y Flujo de Personas.`,
 };
-
-const NAV_LINKS = [
-  { href: "/",             label: "Dashboard"     },
-  { href: "/toteat",       label: "Toteat"        },
-  { href: "/instancias",   label: "Instancias"    },
-  { href: "/auditoria",    label: "Auditoría"     },
-  { href: "/proyecciones", label: "Proyecciones", hideMobile: true },
-  { href: "/reporteria",   label: "Reportería"    },
-  { href: "/reports",      label: "Reportes Auto", hideMobile: true },
-  { href: "/settings",     label: "Config"        },
-];
 
 export default function RootLayout({
   children,
@@ -87,21 +76,7 @@ export default function RootLayout({
                 </div>
               </div>
 
-              {/* Nav */}
-              <nav className="flex items-center gap-1 sm:gap-1.5">
-                {NAV_LINKS.map(({ href, label, hideMobile }) => (
-                  <a
-                    key={href}
-                    href={href}
-                    className={`nav-link text-[11px] sm:text-xs font-semibold px-2.5 py-1.5 rounded-lg ${
-                      hideMobile ? "hidden sm:inline-flex" : "inline-flex"
-                    }`}
-                  >
-                    {label}
-                  </a>
-                ))}
-                <UserNav />
-              </nav>
+              <MainNav />
             </div>
           </header>
 

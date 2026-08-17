@@ -28,21 +28,25 @@ export const maxDuration = 120;
 
 const MAX_HISTORY = 20;
 
-/** Strip echoed context markers from prior assistant UI messages before sending to the model. */
+/** Strip echoed context markers and truncate long prior answers (keeps latency down). */
 function sanitizeUIMessagesForModel(messages: UIMessage[]): UIMessage[] {
   const recent = messages.slice(-MAX_HISTORY);
-  return recent.map((m) => {
+  return recent.map((m, idx) => {
     if (m.role !== "assistant") return m;
+    // El último mensaje del historial puede ser corto; los anteriores se comprimen.
+    const isLast = idx === recent.length - 1;
+    const maxChars = isLast ? 2500 : 800;
     const newParts = m.parts.map((p) => {
-      if (p.type === "text") {
-        return {
-          ...p,
-          text: normalizeBrandInText(
-            p.text.replace(/\[DATOS DEL SISTEMA[^\]]*\]\s*/g, ""),
-          ),
-        };
+      if (p.type !== "text") return p;
+      let text = normalizeBrandInText(
+        p.text.replace(/\[DATOS DEL SISTEMA[^\]]*\]\s*/g, ""),
+      );
+      // Quitar bloques SQL enormes del historial (ya no aportan al follow-up).
+      text = text.replace(/```sql[\s\S]*?```/gi, "[SQL omitido]");
+      if (text.length > maxChars) {
+        text = `${text.slice(0, maxChars)}\n…[respuesta anterior truncada]`;
       }
-      return p;
+      return { ...p, text };
     });
     return { ...m, parts: newParts };
   });
@@ -161,11 +165,13 @@ export async function POST(req: Request) {
       `[AI Chat] model=${selectedModel} mode=${chatMode} systemLen=${fullSystem.length} msgCount=${messages.length} sent=${forModel.length}`,
     );
 
+    // 4k tokens ≈ respuesta larga pero manejable en UI. 32k provocaba streams
+    // de 5–6k tokens (~1 min) y freeze/crash del navegador al re-renderizar HTML.
     const result = streamText({
       model: getModel(selectedModel),
       system: fullSystem,
       messages: modelMessages,
-      maxOutputTokens: 32768,
+      maxOutputTokens: 4096,
       temperature: 0.3,
       onFinish: ({ finishReason, totalUsage }) => {
         console.log(

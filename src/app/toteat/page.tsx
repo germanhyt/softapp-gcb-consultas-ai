@@ -68,19 +68,23 @@ interface ToteatRestaurantOption {
 interface ToteatApiMappings {
   barApiId: string;
   limanesasApiId: string;
+  sisaApiId: string;
 }
 
 type ShiftPreset = "all_day" | "morning_shift" | "afternoon_shift" | "night_shift";
 type BusinessPreset = "all" | "refugio" | "sisa" | "limanesas";
-type ApiModePreset = "all" | "bar" | "limanesas";
+type ApiModePreset = "all" | "bar" | "limanesas" | "sisa";
 
 function defaultRange() {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const end = new Date(now);
+  const start = new Date(now);
+  start.setDate(start.getDate() - 6);
+  const toYmd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   return {
-    startDate: `${y}-${m}-01`,
-    endDate: `${y}-${m}-${String(new Date(y, now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`,
+    startDate: toYmd(start),
+    endDate: toYmd(end),
   };
 }
 
@@ -92,6 +96,7 @@ export default function ToteatDashboardPage() {
   const [apiMappings, setApiMappings] = useState<ToteatApiMappings>({
     barApiId: "",
     limanesasApiId: "",
+    sisaApiId: "",
   });
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessPreset>("all");
   const [selectedApiMode, setSelectedApiMode] = useState<ApiModePreset>("all");
@@ -103,8 +108,10 @@ export default function ToteatDashboardPage() {
   const requestVersionRef = useRef(0);
   const barApiId = apiMappings.barApiId || restaurants[0]?.id || "";
   const limanesasApiId = apiMappings.limanesasApiId || "";
+  const sisaApiId = apiMappings.sisaApiId || "";
   const hasBarApi = Boolean(barApiId);
   const hasLimanesasApi = Boolean(limanesasApiId);
+  const hasSisaApi = Boolean(sisaApiId);
 
   const hourRangeByPreset: Record<ShiftPreset, { from: string; to: string }> = {
     all_day: { from: "", to: "" },
@@ -128,6 +135,7 @@ export default function ToteatDashboardPage() {
         setApiMappings({
           barApiId: typeof j.mappings?.barApiId === "string" ? j.mappings.barApiId : "",
           limanesasApiId: typeof j.mappings?.limanesasApiId === "string" ? j.mappings.limanesasApiId : "",
+          sisaApiId: typeof j.mappings?.sisaApiId === "string" ? j.mappings.sisaApiId : "",
         });
         if (list.length > 0) return;
         setLoading(false);
@@ -156,14 +164,18 @@ export default function ToteatDashboardPage() {
         restaurantId = barApiId;
       } else if (selectedApiMode === "limanesas") {
         restaurantId = limanesasApiId;
+      } else if (selectedApiMode === "sisa") {
+        restaurantId = sisaApiId;
       }
       if (!restaurantId && selectedApiMode === "all") {
-        restaurantId = limanesasApiId;
+        restaurantId = limanesasApiId || sisaApiId;
       }
       if (!restaurantId) {
         throw new Error(
           selectedApiMode === "limanesas"
             ? "No hay API de Limanesas configurada (revisa IDs en TOTEAT_RESTAURANTS_JSON y TOTEAT_LIMANESAS_SOURCE_RESTAURANT_ID)."
+            : selectedApiMode === "sisa"
+              ? "No hay API de Sisa configurada (revisa IDs en TOTEAT_RESTAURANTS_JSON y TOTEAT_SISA_SOURCE_RESTAURANT_ID)."
             : "No hay API Toteat configurada para la selección actual.",
         );
       }
@@ -202,6 +214,7 @@ export default function ToteatDashboardPage() {
     restaurants.length,
     barApiId,
     limanesasApiId,
+    sisaApiId,
     selectedApiMode,
     selectedBusiness,
     shiftPreset,
@@ -314,6 +327,9 @@ export default function ToteatDashboardPage() {
           <option value="limanesas" disabled={!hasLimanesasApi}>
             Limanesas
           </option>
+          <option value="sisa" disabled={!hasSisaApi}>
+            Sisa
+          </option>
         </select>
         <span className="text-[10px] font-bold uppercase tracking-widest ml-2 flex items-center gap-1" style={{ color: "var(--foreground-subtle)" }}>
           <Clock className="h-3 w-3" />
@@ -369,7 +385,9 @@ export default function ToteatDashboardPage() {
                   ? "Todas"
                   : selectedApiMode === "bar"
                     ? "Bar Refugio"
-                    : "Limanesas"}
+                    : selectedApiMode === "limanesas"
+                      ? "Limanesas"
+                      : "Sisa"}
               </span>
               <span> · Fuente actual: {data.restaurant.name}</span>
               {(data.applied_filters?.hour_from != null || data.applied_filters?.hour_to != null) && (

@@ -156,8 +156,12 @@ export function MessageContent({
     return extractSqlBlocks(safeContent);
   }, [safeContent, isStreaming]);
 
-  // Streaming or no tables: render as plain formatted text
+  // Durante streaming: texto plano (sin regex HTML). Re-formatear miles de
+  // tokens en cada chunk con dangerouslySetInnerHTML bloqueaba el main thread.
   if (!segments) {
+    if (isStreaming) {
+      return <span className="whitespace-pre-wrap break-words">{safeContent}</span>;
+    }
     return (
       <span
         dangerouslySetInnerHTML={{

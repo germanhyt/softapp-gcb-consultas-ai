@@ -20,6 +20,10 @@ export interface SmtpEffectiveConfig {
   user: string;
   pass: string;
   from: string;
+  /** true = Nodemailer debe autenticar con user/pass. false = relay por IP (p. ej. smtp-relay.gmail.com). */
+  requireAuth: boolean;
+  /** Dominio enviado en EHLO/HELO (Google Workspace relay lo exige alineado al dominio). */
+  ehloName: string;
 }
 
 export interface MaskedSmtpConfig {
@@ -30,7 +34,9 @@ export interface MaskedSmtpConfig {
   from: string;
   maskedPass: string;
   hasPass: boolean;
-  /** true si hay usuario y contraseña efectivos (archivo o .env). */
+  /** "login" = user+pass; "relay" = sin credenciales (IP allowlist). */
+  authMode: "login" | "relay" | "incomplete";
+  /** true si la config permite intentar envío. */
   ready: boolean;
 }
 
@@ -63,6 +69,19 @@ export function maskSmtpPass(pass: string): string {
   if (!pass) return "";
   if (pass.length <= 4) return "••••";
   return "••••••••" + pass.slice(-4);
+}
+
+/** Extrae dominio del From/user para EHLO (p. ej. sistemas@gcb.pe → gcb.pe). */
+export function resolveSmtpEhloName(fromOrUser: string, fallback = "localhost"): string {
+  const fromEnv = (process.env.SMTP_EHLO_NAME ?? "").trim();
+  if (fromEnv) return fromEnv;
+  const raw = (fromOrUser ?? "").trim();
+  const at = raw.lastIndexOf("@");
+  if (at >= 0 && at < raw.length - 1) {
+    const domain = raw.slice(at + 1).trim().toLowerCase();
+    if (domain && !domain.includes(" ")) return domain;
+  }
+  return fallback;
 }
 
 function parseStored(raw: unknown): SmtpStoredConfig {
@@ -116,8 +135,20 @@ function effectiveUser(stored: SmtpStoredConfig): string {
   return (process.env.SMTP_USER ?? "").trim();
 }
 
+function resolveAuthMode(
+  user: string,
+  pass: string,
+): MaskedSmtpConfig["authMode"] {
+  if (user && pass) return "login";
+  if (!user && !pass) return "relay";
+  return "incomplete";
+}
+
 /**
  * Configuración efectiva para Nodemailer (archivo sobrescribe env por campo cuando el valor guardado no está vacío).
+ * Soporta:
+ * - login: user + pass
+ * - relay: sin credenciales (Google Workspace smtp-relay / IP allowlist), requiere From
  */
 export function getSmtpEffectiveConfig(): SmtpEffectiveConfig | null {
   const stored = readSmtpStoredConfig();
@@ -142,7 +173,10 @@ export function getSmtpEffectiveConfig(): SmtpEffectiveConfig | null {
     process.env.SMTP_USER ||
     "";
 
-  if (!user || !pass) return null;
+  const mode = resolveAuthMode(user, pass);
+  if (mode === "incomplete") return null;
+  if (!host.trim()) return null;
+  if (!fromRaw.trim()) return null;
 
   return {
     host,
@@ -151,6 +185,8 @@ export function getSmtpEffectiveConfig(): SmtpEffectiveConfig | null {
     user,
     pass,
     from: fromRaw,
+    requireAuth: mode === "login",
+    ehloName: resolveSmtpEhloName(fromRaw, host),
   };
 }
 
@@ -163,9 +199,21 @@ export function getMaskedSmtpConfig(): MaskedSmtpConfig {
   const user = effectiveUser(stored);
   const pass = effectivePass(stored);
   const maskedPass = maskSmtpPass(pass);
+  const host = stored.host || process.env.SMTP_HOST || DEFAULT_STORED.host;
+  const from =
+    stored.from ||
+    process.env.SMTP_FROM ||
+    user ||
+    process.env.SMTP_USER ||
+    "";
+  const authMode = resolveAuthMode(user, pass);
+  const ready =
+    Boolean(host.trim()) &&
+    Boolean(from.trim()) &&
+    (authMode === "login" || authMode === "relay");
 
   return {
-    host: stored.host || process.env.SMTP_HOST || DEFAULT_STORED.host,
+    host,
     port:
       stored.port > 0 ? stored.port : Number(process.env.SMTP_PORT) || DEFAULT_STORED.port,
     secure: stored.secure,
@@ -173,6 +221,7 @@ export function getMaskedSmtpConfig(): MaskedSmtpConfig {
     from: stored.from || process.env.SMTP_FROM || "",
     maskedPass,
     hasPass: Boolean(pass),
-    ready: Boolean(user && pass),
+    authMode,
+    ready,
   };
 }

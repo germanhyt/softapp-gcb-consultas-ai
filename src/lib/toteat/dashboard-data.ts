@@ -38,6 +38,7 @@ interface ToteatSaleRow {
   numberClients?: number;
   paymentForms?: ToteatPaymentForm[];
   products?: ToteatProduct[];
+  __forcedBusiness?: "Sisa" | "Limanesas" | "Refugio";
 }
 
 interface ToteatCancellationRow {
@@ -54,7 +55,7 @@ export interface ToteatDashboardParams {
   restaurantId?: string | null;
   hourFrom?: number | null;
   hourTo?: number | null;
-  apiMode?: "all" | "bar" | "limanesas";
+  apiMode?: "all" | "bar" | "limanesas" | "sisa";
   businessScope?: "all" | "refugio" | "sisa" | "limanesas";
 }
 
@@ -348,6 +349,18 @@ function findFullyCompensatedOrderIds(rows: ToteatSaleRow[]): Set<string> {
   return fullyCompensated;
 }
 
+function tagRowsForSource(
+  rows: ToteatSaleRow[],
+  sourcePrefix: string,
+  forcedBusiness: "Sisa" | "Limanesas" | "Refugio",
+): ToteatSaleRow[] {
+  return rows.map((row) => ({
+    ...row,
+    orderId: row.orderId != null ? `${sourcePrefix}:${String(row.orderId)}` : row.orderId,
+    __forcedBusiness: forcedBusiness,
+  }));
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -525,27 +538,44 @@ export async function getToteatDashboardData(
   const limanesasAggregateForRestaurantId = (
     process.env.TOTEAT_LIMANESAS_AGGREGATE_FOR_RESTAURANT_ID || ""
   ).trim();
+  const sisaSourceRestaurantId = (process.env.TOTEAT_SISA_SOURCE_RESTAURANT_ID || "").trim();
+  const sisaAggregateForRestaurantId = (process.env.TOTEAT_SISA_AGGREGATE_FOR_RESTAURANT_ID || "").trim();
   const shouldAggregateExternalLimanesas =
     apiMode === "all" &&
     Boolean(limanesasSourceRestaurantId) &&
     limanesasSourceRestaurantId !== cfg.id &&
     (!limanesasAggregateForRestaurantId || limanesasAggregateForRestaurantId === cfg.id);
-  const shouldFetchCancellations = apiMode !== "limanesas";
-  const forceAllRowsToLimanesas = apiMode === "limanesas";
+  const shouldAggregateExternalSisa =
+    apiMode === "all" &&
+    Boolean(sisaSourceRestaurantId) &&
+    sisaSourceRestaurantId !== cfg.id &&
+    (!sisaAggregateForRestaurantId || sisaAggregateForRestaurantId === cfg.id);
+  const shouldFetchCancellations = apiMode !== "limanesas" && apiMode !== "sisa";
+  const forcedBusinessByApi: InternalBusiness | null =
+    apiMode === "limanesas" ? "Limanesas" : apiMode === "sisa" ? "Sisa" : null;
   const primarySalesRetryOptions =
-    apiMode === "limanesas"
+    apiMode === "limanesas" || apiMode === "sisa"
       ? {
           maxAttempts: 6,
           baseBackoffMs: 2000,
           maxBackoffMs: 45000,
         }
       : undefined;
+  const externalSalesRetryOptions = {
+    maxAttempts: 6,
+    baseBackoffMs: 2000,
+    maxBackoffMs: 45000,
+  };
 
   try {
     const allRows: ToteatSaleRow[] = [];
     const cancellationRows: ToteatCancellationRow[] = [];
     let externalLimanesasRows: ToteatSaleRow[] = [];
     let externalLimanesasName = "";
+    let externalLimanesasError = "";
+    let externalSisaRows: ToteatSaleRow[] = [];
+    let externalSisaName = "";
+    let externalSisaError = "";
 
     for (const r of ranges) {
       const cancellationUrl = `${cfg.baseUrl}/orders/cancellation-report?${baseParams.toString()}&start_date=${formatYmdCompactToDashed(r.ini)}&end_date=${formatYmdCompactToDashed(r.end)}`;
@@ -598,9 +628,15 @@ export async function getToteatDashboardData(
       const limanesasCfg = resolveToteatRestaurant(limanesasSourceRestaurantId);
       if (limanesasCfg) {
         try {
-          externalLimanesasRows = await fetchSalesRowsForRestaurant(limanesasCfg, startDate, endDate);
+          externalLimanesasRows = await fetchSalesRowsForRestaurant(
+            limanesasCfg,
+            startDate,
+            endDate,
+            externalSalesRetryOptions,
+          );
           externalLimanesasName = limanesasCfg.name;
         } catch (err) {
+          externalLimanesasError = err instanceof Error ? err.message : String(err);
           console.error(
             `[toteat/dashboard] No se pudo sumar API Limanesas (${limanesasCfg.id}):`,
             err,
@@ -609,7 +645,46 @@ export async function getToteatDashboardData(
       }
     }
 
-    const hourFilteredRows = allRows.filter((r) => matchesHourFilter(r.dateClosed, hourFrom, hourTo));
+    if (shouldAggregateExternalSisa) {
+      const sisaCfg = resolveToteatRestaurant(sisaSourceRestaurantId);
+      if (sisaCfg) {
+        try {
+          externalSisaRows = await fetchSalesRowsForRestaurant(
+            sisaCfg,
+            startDate,
+            endDate,
+            externalSalesRetryOptions,
+          );
+          externalSisaName = sisaCfg.name;
+        } catch (err) {
+          externalSisaError = err instanceof Error ? err.message : String(err);
+          console.error(
+            `[toteat/dashboard] No se pudo sumar API Sisa (${sisaCfg.id}):`,
+            err,
+          );
+        }
+      }
+    }
+
+    const sourceAwareRows: ToteatSaleRow[] = [...allRows];
+    if (externalLimanesasRows.length > 0) {
+      sourceAwareRows.push(
+        ...tagRowsForSource(
+          externalLimanesasRows,
+          limanesasSourceRestaurantId || "limanesas",
+          "Limanesas",
+        ),
+      );
+    }
+    if (externalSisaRows.length > 0) {
+      sourceAwareRows.push(
+        ...tagRowsForSource(externalSisaRows, sisaSourceRestaurantId || "sisa", "Sisa"),
+      );
+    }
+
+    const hourFilteredRows = sourceAwareRows.filter((r) =>
+      matchesHourFilter(r.dateClosed, hourFrom, hourTo),
+    );
     const fullyCompensatedOrderIds = findFullyCompensatedOrderIds(hourFilteredRows);
     const rows = hourFilteredRows.filter((row) => {
       if (row.orderId == null) return true;
@@ -692,7 +767,8 @@ export async function getToteatDashboardData(
         methodMap.set(name, current);
       }
 
-      for (const p of row.products || []) {
+      const rowProducts = row.products || [];
+      for (const p of rowProducts) {
         const name = p.name?.trim() || "Sin nombre";
         const current = productMap.get(name) || { quantity: 0, revenue: 0 };
         const quantity = safeNum(p.quantity);
@@ -700,52 +776,50 @@ export async function getToteatDashboardData(
         current.quantity += quantity;
         current.revenue += payed;
         productMap.set(name, current);
+      }
 
-        const biz = forceAllRowsToLimanesas
-          ? "Limanesas"
+      // APIs externas dedicadas (Sisa/Limanesas): mantener imputación por row.payed
+      // para conservar consistencia con el cruce histórico ya validado.
+      if (row.__forcedBusiness) {
+        const forcedBiz = row.__forcedBusiness;
+        businessTotals[forcedBiz] += safeNum(row.payed);
+        if (row.orderId != null) businessOrders[forcedBiz].add(String(row.orderId));
+
+        if (rowProducts.length > 0) {
+          for (const p of rowProducts) {
+            const quantity = safeNum(p.quantity);
+            businessLines[forcedBiz] += quantity > 0 ? quantity : 1;
+          }
+        } else {
+          businessLines[forcedBiz] += 1;
+        }
+        continue;
+      }
+
+      for (const p of rowProducts) {
+        const quantity = safeNum(p.quantity);
+        const payed = safeNum(p.payed);
+        const biz = row.__forcedBusiness
+          ? row.__forcedBusiness
+          : forcedBusinessByApi
+          ? forcedBusinessByApi
           : classifyByCategory(row.zoneName, p.hierarchyName, p.name);
         businessTotals[biz] += payed;
         businessLines[biz] += quantity > 0 ? quantity : 1;
         if (row.orderId != null) businessOrders[biz].add(String(row.orderId));
       }
 
-      if (!row.products || row.products.length === 0) {
-        const fallbackBiz: InternalBusiness = forceAllRowsToLimanesas
-          ? "Limanesas"
+      if (rowProducts.length === 0) {
+        const fallbackBiz: InternalBusiness = row.__forcedBusiness
+          ? row.__forcedBusiness
+          : forcedBusinessByApi
+          ? forcedBusinessByApi
           : isCafeteriaZone(row.zoneName)
             ? "Sisa"
             : "Refugio";
         businessTotals[fallbackBiz] += safeNum(row.total);
         businessLines[fallbackBiz] += 1;
         if (row.orderId != null) businessOrders[fallbackBiz].add(String(row.orderId));
-      }
-    }
-
-    if (externalLimanesasRows.length > 0) {
-      const hourFilteredExternalRows = externalLimanesasRows.filter((row) =>
-        matchesHourFilter(row.dateClosed, hourFrom, hourTo),
-      );
-      const compensatedExternalOrderIds = findFullyCompensatedOrderIds(hourFilteredExternalRows);
-      const externalEffectiveRows = hourFilteredExternalRows.filter((row) => {
-        if (row.orderId == null) return true;
-        return !compensatedExternalOrderIds.has(String(row.orderId));
-      });
-      const externalPrefix = limanesasSourceRestaurantId || "limanesas";
-
-      for (const row of externalEffectiveRows) {
-        businessTotals.Limanesas += safeNum(row.payed);
-        if (row.orderId != null) {
-          businessOrders.Limanesas.add(`${externalPrefix}:${String(row.orderId)}`);
-        }
-
-        if (Array.isArray(row.products) && row.products.length > 0) {
-          for (const p of row.products) {
-            const quantity = safeNum(p.quantity);
-            businessLines.Limanesas += quantity > 0 ? quantity : 1;
-          }
-        } else {
-          businessLines.Limanesas += 1;
-        }
       }
     }
 
@@ -938,6 +1012,24 @@ export async function getToteatDashboardData(
             ? [
                 `se suma API propia de Limanesas (${externalLimanesasName || limanesasSourceRestaurantId}) al bloque Limanesas`,
               ]
+            : []),
+          ...(shouldAggregateExternalLimanesas && externalLimanesasRows.length === 0 && externalLimanesasError
+            ? [
+                `no se pudo sumar API propia de Limanesas (${externalLimanesasName || limanesasSourceRestaurantId}): ${externalLimanesasError}`,
+              ]
+            : []),
+          ...(externalSisaRows.length > 0
+            ? [
+                `se suma API propia de Sisa (${externalSisaName || sisaSourceRestaurantId}) al bloque Sisa`,
+              ]
+            : []),
+          ...(shouldAggregateExternalSisa && externalSisaRows.length === 0 && externalSisaError
+            ? [
+                `no se pudo sumar API propia de Sisa (${externalSisaName || sisaSourceRestaurantId}): ${externalSisaError}`,
+              ]
+            : []),
+          ...(forcedBusinessByApi
+            ? [`API dedicada seleccionada: todo el cruce se imputa a ${forcedBusinessByApi}`]
             : []),
           ...(businessScope !== "all"
             ? [

@@ -17,7 +17,8 @@ export async function GET() {
 
 /**
  * POST body: { host?, port?, secure?, user?, pass?, from? }
- * Si pass está vacío, es solo puntos, o coincide con la máscara mostrada, se conserva la contraseña guardada.
+ * - Si pass es la máscara mostrada (••••…), se conserva la contraseña guardada.
+ * - Si pass llega vacío (campo borrado), se limpia la contraseña (modo relay sin AUTH).
  */
 export async function POST(req: Request) {
   try {
@@ -27,7 +28,6 @@ export async function POST(req: Request) {
 
     const incomingPass = String(body.pass ?? "").trim();
     const passUnchanged =
-      incomingPass === "" ||
       /^[\u2022*]+$/u.test(incomingPass) ||
       (maskedEffective !== "" && incomingPass === maskedEffective);
 

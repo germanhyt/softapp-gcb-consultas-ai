@@ -13,6 +13,9 @@ import {
 
 export type { ScheduledTask, VentasReportPeriodPreset } from "./types";
 
+/** Zona horaria de todas las expresiones cron del scheduler (hora local operativa). */
+export const SCHEDULER_TIMEZONE = "America/Lima";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const cronJobs = new Map<string, any>();
 
@@ -117,7 +120,7 @@ async function runTaskReport(
     toteatHourFrom?: number | null;
     toteatHourTo?: number | null;
   },
-): Promise<{ content: string; csv?: string; csvFilename?: string }> {
+): Promise<{ content: string; htmlContent?: string; csv?: string; csvFilename?: string }> {
   if (task.module === "toteat") {
     const period =
       overrides?.ventasReportPeriod !== undefined
@@ -140,6 +143,7 @@ async function runTaskReport(
     });
     return {
       content: report.content,
+      htmlContent: report.htmlContent,
       csv: report.csv,
       csvFilename: report.csvFilename,
     };
@@ -168,48 +172,55 @@ function scheduleJob(task: ScheduledTask) {
     return;
   }
 
-  const job = cron.schedule(task.cronExpression, async () => {
-    const current = tasks.find((t) => t.id === task.id);
-    if (!current || !current.active || current.recipients.length === 0) return;
+  const job = cron.schedule(
+    task.cronExpression,
+    async () => {
+      const current = tasks.find((t) => t.id === task.id);
+      if (!current || !current.active || current.recipients.length === 0) return;
 
-    console.log(`[CronManager] Executing: ${current.name}`);
+      console.log(`[CronManager] Executing: ${current.name}`);
 
-    try {
-      const report = await runTaskReport(current);
+      try {
+        const report = await runTaskReport(current);
 
-      await sendReportEmail({
-        to: current.recipients,
-        subject: current.name,
-        htmlContent: report.content,
-        taskName: current.name,
-        model: current.module === "toteat" ? getToteatSourceNoteShort() : current.modelId,
-        attachments:
-          report.csv && report.csvFilename
-            ? [{ filename: report.csvFilename, content: report.csv }]
-            : undefined,
-      });
+        await sendReportEmail({
+          to: current.recipients,
+          subject: current.name,
+          htmlContent: report.htmlContent || report.content,
+          contentFormat: report.htmlContent ? "html" : "markdown",
+          taskName: current.name,
+          model: current.module === "toteat" ? getToteatSourceNoteShort() : current.modelId,
+          attachments:
+            report.csv && report.csvFilename
+              ? [{ filename: report.csvFilename, content: report.csv }]
+              : undefined,
+        });
 
-      const idx = tasks.findIndex((t) => t.id === task.id);
-      if (idx !== -1) {
-        tasks[idx].lastRun = new Date().toISOString();
-        tasks[idx].lastStatus = "success";
-        tasks[idx].lastResult = report.content.substring(0, 200) + "...";
-        persistTasks();
+        const idx = tasks.findIndex((t) => t.id === task.id);
+        if (idx !== -1) {
+          tasks[idx].lastRun = new Date().toISOString();
+          tasks[idx].lastStatus = "success";
+          tasks[idx].lastResult = report.content.substring(0, 200) + "...";
+          persistTasks();
+        }
+      } catch (error) {
+        console.error(`[CronManager] Task ${task.id} failed:`, error);
+        const idx = tasks.findIndex((t) => t.id === task.id);
+        if (idx !== -1) {
+          tasks[idx].lastRun = new Date().toISOString();
+          tasks[idx].lastStatus = "error";
+          tasks[idx].lastResult = error instanceof Error ? error.message : "Error desconocido";
+          persistTasks();
+        }
       }
-    } catch (error) {
-      console.error(`[CronManager] Task ${task.id} failed:`, error);
-      const idx = tasks.findIndex((t) => t.id === task.id);
-      if (idx !== -1) {
-        tasks[idx].lastRun = new Date().toISOString();
-        tasks[idx].lastStatus = "error";
-        tasks[idx].lastResult = error instanceof Error ? error.message : "Error desconocido";
-        persistTasks();
-      }
-    }
-  });
+    },
+    { timezone: SCHEDULER_TIMEZONE },
+  );
 
   cronJobs.set(task.id, job);
-  console.log(`[CronManager] Scheduled: ${task.name} (${task.cronExpression})`);
+  console.log(
+    `[CronManager] Scheduled: ${task.name} (${task.cronExpression}, tz=${SCHEDULER_TIMEZONE})`,
+  );
 }
 
 /**
@@ -324,7 +335,8 @@ export async function executeTaskNow(
     emailSent = await sendReportEmail({
       to,
       subject: `[Manual] ${task.name}`,
-      htmlContent: report.content,
+      htmlContent: report.htmlContent || report.content,
+      contentFormat: report.htmlContent ? "html" : "markdown",
       taskName: task.name,
       model: task.module === "toteat" ? getToteatSourceNoteShort() : task.modelId,
       attachments:

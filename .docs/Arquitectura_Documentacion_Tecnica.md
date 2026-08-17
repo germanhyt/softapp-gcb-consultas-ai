@@ -463,6 +463,10 @@ ORDER BY schema_name, table_name;
 | Chat responsive | ✅ | Header en dos filas: título + acciones arriba; modo/modelo abajo (`ChatHeader`) |
 | Icono robot | ✅ | Bot en FAB, header, empty state y chat compacto |
 
+===============================================================================
+===============================================================================
+
+
 
 
 

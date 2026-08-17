@@ -35,20 +35,22 @@ export const BQ_SCHEMA = {
       sales_df: {
         rows: 525438,
         columns:
-          "Fecha(STRING), Hora(STRING), CodigoTransaccion(STRING), Producto(STRING), Cliente(STRING), CodigoNegocio(STRING), Monto(FLOAT), Cantidad(FLOAT), Turno(STRING), Estado(STRING), FormaPago(STRING), FormaPagoModificado(STRING)",
+          "Fecha(STRING), Hora(STRING), CodigoTransaccion(STRING), Producto(STRING), Cliente(STRING), CodigoNegocio(STRING), Monto(FLOAT), Cantidad(FLOAT), Turno(STRING), Estado(STRING), FormaPago(STRING), FormaPagoModificado(STRING), TipoIngreso(STRING), CategoriaProducto(STRING), TipoNegocio(STRING)",
         notes:
-          "Tabla principal de ventas. Fecha 'YYYY-MM-DD'. Hora 'HH:MM:SS'. Turno: 'Mañana' o 'Noche'. Medios de pago: usar FormaPagoModificado (con fallback a FormaPago si vacío).",
+          "Detalle de ventas reales ya realizadas. Fecha 'YYYY-MM-DD'. Hora 'HH:MM:SS'. Turno: 'Mañana' o 'Noche'. Medios de pago: usar FormaPagoModificado (con fallback a FormaPago si vacío). TipoIngreso='EVENTO' identifica ingresos por evento realizado (no confundir con venta de salón/operación regular). Para categorías preferir JOIN Categorias por Producto (CategoriaProducto es auxiliar).",
       },
       Negocios: {
         rows: 60,
         columns:
           "CodigoNegocio(STRING), Descripcion(STRING), Zona(STRING), TipoComida(STRING), TipoNegocio(STRING), Estado(FLOAT)",
-        notes: "Locatarios/negocios. JOIN con sales_df por CodigoNegocio.",
+        notes:
+          "Detalle de locatarios de Refugio Gastronómico. Dimensión maestra de negocios; JOIN con sales_df / MontosMetaMicro / Pronostico por CodigoNegocio. Predicciones NO tiene CodigoNegocio. Usar Descripcion para filtrar por nombre de locatario.",
       },
       Categorias: {
         rows: 1247,
         columns: "Producto(STRING), Categoria(STRING), Nacionalidad(STRING)",
-        notes: "Clasificación de productos. JOIN con sales_df por Producto.",
+        notes:
+          "Detalle de categoría y productos. JOIN con sales_df por Producto para agrupar o filtrar por Categoria.",
       },
       Presupuesto: {
         rows: 324,
@@ -58,20 +60,27 @@ export const BQ_SCHEMA = {
       },
       MontosMeta: {
         rows: 365,
-        columns: "Anio(INTEGER), Mes(STRING), Fecha(DATE), MontoMeta(FLOAT)",
-        notes: "Meta total de ventas por fecha.",
+        columns: "Anio(INTEGER), Mes(STRING), nrosemana(INTEGER), Fecha(DATE), MontoMeta(FLOAT)",
+        notes:
+          "Proyección meta del establecimiento completo de Refugio Gastronómico (meta global del complejo, no por locatario). Comparar contra SUM(sales_df.Monto) del mismo periodo. Mes es nombre en español (ej: 'Agosto').",
       },
       MontosMetaMicro: {
-        columns: "CodigoNegocio(STRING), Fecha(DATE), MontoMeta(FLOAT)",
-        notes: "Metas desagregadas (micro). Verificar columnas antes de agregar por negocio.",
+        columns:
+          "Anio(INTEGER), Mes(STRING), Nrosemana(INTEGER), TipoNegocio(STRING), CodigoNegocio(STRING), Fecha(DATE), MontoMeta(FLOAT), MontoMetaPropioLocatario(FLOAT)",
+        notes:
+          "Proyección meta de cada locatario del establecimiento. Preferir JOIN Negocios por CodigoNegocio cuando no sea NULL; si CodigoNegocio es NULL usar TipoNegocio como identificador del locatario. Comparar contra ventas reales del mismo periodo. Mes es nombre en español (ej: 'Agosto').",
       },
       Predicciones: {
-        columns: "CodigoNegocio(STRING), Fecha(DATE), Prediccion(FLOAT)",
-        notes: "Predicciones de venta por negocio/fecha.",
+        columns:
+          "Fecha(DATE), NroSemana(INTEGER), Anio(INTEGER), Mes(INTEGER), Ventas(FLOAT), VentasProyectadas(FLOAT), FechaActualizacion(TIMESTAMP)",
+        notes:
+          "Predicción a nivel establecimiento completo (NO tiene CodigoNegocio). Para fechas restantes a fin de mes usar VentasProyectadas; Ventas refleja lo ya observado/referencial del día. Sirve para estimar cierre de mes. No es meta (MontosMeta) ni detalle transaccional (sales_df).",
       },
       Pronostico: {
-        columns: "CodigoNegocio(STRING), Mes(STRING), Pronostico(FLOAT)",
-        notes: "Pronóstico mensual por negocio.",
+        columns:
+          "Fecha(DATETIME), DiaSemana(INTEGER), EsFeriado(INTEGER), Tendencia(INTEGER), Predicted_Ventas(FLOAT), CodigoNegocio(STRING), Presupuesto_Porcentaje(FLOAT), Predicted_Ventas_Locatario(FLOAT), Año(INTEGER)",
+        notes:
+          "Histórico de pronóstico DIARIO por locatario (sí tiene CodigoNegocio). Última carga ~2025-12: NO usar para meses 2026+. Para cierre de mes por locatario el asistente recalcula desde sales_df (media DOW). Distinto de Predicciones (establecimiento).",
       },
     },
   },
@@ -84,7 +93,7 @@ export const BQ_SCHEMA = {
         columns:
           "fecha(DATE), hora(TIME), tipo_camara(STRING), codigo_lugar(INTEGER), placa(STRING), color(STRING), marca(STRING)",
         notes:
-          "Movimientos en estacionamiento. tipo_camara='entrada' o 'salida'. codigo_lugar identifica cámara/zona.",
+          "Registro de movimientos del estacionamiento (entrada/salida). tipo_camara='entrada' o 'salida'. JOIN Lugares por codigo_lugar para nombre y capacidad de zona.",
       },
       Vehiculos: {
         rows: 2379,
@@ -95,7 +104,8 @@ export const BQ_SCHEMA = {
         rows: 3,
         columns:
           "codigo_lugar(INTEGER), nombre_lugar(STRING), capacidad_maxima(INTEGER)",
-        notes: "Zonas del estacionamiento.",
+        notes:
+          "Catálogo de lugares/zonas del estacionamiento (nombre y capacidad máxima). JOIN con Registro por codigo_lugar.",
       },
       Tarifas_horarias: {
         columns: "codigo_lugar(INTEGER), hora_inicio(TIME), hora_fin(TIME), tarifa(FLOAT)",
@@ -118,13 +128,15 @@ export const BQ_SCHEMA = {
         rows: 144467,
         columns:
           "Fecha(DATE), Hora(TIME), Region(STRING), Personas(INTEGER), dia_semana(STRING)",
-        notes: "Flujo por zona. dia_semana: Lunes, Martes, etc.",
+        notes:
+          "Conteo de personas por zona (Region) y hora. Usar para afluencia espacial. dia_semana: Lunes, Martes, etc.",
       },
       Total_Puertas_Hora: {
         rows: 46238,
         columns:
           "Fecha(DATE), Hora(TIME), Entradas(FLOAT), Salidas(FLOAT), Puerta(INTEGER), Dia(STRING), Turno(STRING)",
-        notes: "Entradas y salidas por puerta y hora.",
+        notes:
+          "Total de entradas y salidas por puerta y hora. Usar para visitantes/ingresos al complejo (SUM(Entradas)).",
       },
     },
   },
@@ -159,16 +171,34 @@ export interface QueryResult {
   sql: string;
 }
 
-export async function executeBigQuery(sql: string): Promise<QueryResult> {
+export interface ExecuteBigQueryOptions {
+  /** Default 100MB. */
+  maximumBytesBilled?: number;
+  /** Default 500. Use higher for series diarias multi-locatario. */
+  maxResults?: number;
+  /** Default false. */
+  autoPaginate?: boolean;
+}
+
+export async function executeBigQuery(
+  sql: string,
+  options: ExecuteBigQueryOptions = {}
+): Promise<QueryResult> {
   const bq = getBigQueryClient();
+  const maximumBytesBilled = options.maximumBytesBilled ?? 100 * 1024 * 1024;
+  const maxResults = options.maxResults ?? 500;
+  const autoPaginate = options.autoPaginate ?? false;
 
   const [job] = await bq.createQueryJob({
     query: sql,
     location: "US",
-    maximumBytesBilled: String(100 * 1024 * 1024), // 100MB limit
+    maximumBytesBilled: String(maximumBytesBilled),
   });
 
-  const [rows, , metadata] = await job.getQueryResults({ autoPaginate: false, maxResults: 500 });
+  const [rows, , metadata] = await job.getQueryResults({
+    autoPaginate,
+    maxResults: autoPaginate ? undefined : maxResults,
+  });
 
   const schema =
     metadata?.schema?.fields?.map((f) => ({

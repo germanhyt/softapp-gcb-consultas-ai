@@ -181,11 +181,12 @@ export function ChatProvider({
     setIsInitialized(true);
   }, [setAiMessages]);
 
+  // Persistir solo cuando NO hay stream activo. Guardar en cada token
+  // (localStorage + JSON de historial grande) congelaba/crasheaba el navegador.
   useEffect(() => {
-    if (isInitialized && aiMessages.length > 0) {
-      saveMessages(aiMessages);
-    }
-  }, [aiMessages, isInitialized]);
+    if (!isInitialized || aiMessages.length === 0 || isLoading) return;
+    saveMessages(aiMessages);
+  }, [aiMessages, isInitialized, isLoading]);
 
   useEffect(() => {
     if (!chatEnabled) {
